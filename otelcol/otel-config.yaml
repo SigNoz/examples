@@ -1,0 +1,70 @@
+receivers:
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      memory:
+      filesystem:
+
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  resourcedetection:
+    detectors: [system]
+
+  resource:
+    attributes:
+      - key: service.name
+        value: "otelcol-contrib-demo"
+        action: upsert
+
+      - key: service.namespace
+        value: "infra"
+        action: upsert
+
+      - key: deployment.environment
+        value: "demo"
+        action: upsert
+
+	# explicit object definitions prevent k8s validation errors
+  batch: {}
+  
+exporters:
+  otlp:
+	  # replace <region> with your host region
+    endpoint: "https://ingest.<region>.signoz.cloud:443"
+    tls:
+      insecure: false
+    headers:
+	    # add your ingestion key here
+      signoz-ingestion-key: "<SIGNOZ-INGESTION-KEY>"
+  debug:
+    verbosity: normal
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, otlp]
+      processors: [resourcedetection, resource, batch]
+      exporters: [otlp]
+    
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp, debug]
+
+  # extensions are configured separately from pipelines
+  extensions: [health_check, pprof, zpages]
