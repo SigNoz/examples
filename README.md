@@ -6,6 +6,8 @@ A curated set of minimal, runnable samples that show how to instrument applicati
 - `templates/` – shared templates and checklists for new samples.
 - `golang/`, `python/`, `nodejs/`, `flask/`, `fastapi/`, `dot-net/`, `java/` – language/framework-specific samples organized by app folder.
 - Every sample folder includes its own `README.md` with setup, run, and instrumentation notes.
+- Every sample folder name should end with "-demo".
+- Do not use _ to separate words in folder name. Use - instead.
 
 Suggested tree (what we have now):
 ```
