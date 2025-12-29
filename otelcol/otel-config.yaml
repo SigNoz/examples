@@ -31,17 +31,17 @@ processors:
         value: "demo"
         action: upsert
 
-	# explicit object definitions prevent k8s validation errors
+ # explicit object definitions prevent k8s validation errors
   batch: {}
   
 exporters:
   otlp:
-	  # replace <region> with your host region
+   # replace <region> with your host region
     endpoint: "https://ingest.<region>.signoz.cloud:443"
     tls:
       insecure: false
     headers:
-	    # add your ingestion key here
+     # add your ingestion key here
       signoz-ingestion-key: "<SIGNOZ-INGESTION-KEY>"
   debug:
     verbosity: normal
