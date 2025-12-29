@@ -1,180 +1,178 @@
 # OpenTelemetry Collector Contrib Demo
 
-This folder contains a demonstration setup for the **OpenTelemetry Collector Contrib**, a customized OpenTelemetry Collector build that includes optional contrib components for observability (metrics, traces, logs).
+This folder contains a comprehensive demonstration setup for the **OpenTelemetry Collector Contrib**. It covers deploying the standard Contrib distribution via Docker and Kubernetes, as well as building a custom, optimized Collector binary using the OpenTelemetry Collector Builder (OCB).
 
 ## Overview
 
-The OpenTelemetry Collector is a vendor-agnostic proxy that receives, processes, and exports telemetry data. This setup includes:
+The OpenTelemetry Collector Contrib distribution includes a vast ecosystem of community-maintained receivers, processors, and exporters. This setup demonstrates:
 
-- **Receivers**: OTLP (traces & metrics) and Host Metrics collection
-- **Processors**: Batch, resource detection, and resource enrichment
-- **Exporters**: OTLP (for external backends like SigNoz) and Debug exporter
-- **Extensions**: Health checks, profiling (pprof), and inspection pages (zpages)
+- **Receivers**: OTLP (gRPC/HTTP), Host Metrics (CPU, RAM, Disk), and Filelog.
+- **Processors**: Batching, Resource Detection (Cloud/System metadata), and Attributes modification.
+- **Exporters**: OTLP (sending data to SigNoz) and Debug (logging to console).
+- **Extensions**: Health checks, Pprof (profiling), and zPages (introspection).
 
----
+## Prerequisites
 
-## File Descriptions
-
-### Root Level Files
-
-#### `contrib_load_generator.sh`
-Bash script that generates synthetic trace and metric data to test the OpenTelemetry Collector.
-- Creates parallel workers to simulate concurrent telemetry events
-- Generates random trace IDs and span IDs
-- Sends HTTP requests to the collector's OTLP endpoint
-- Configurable duration, concurrency, and request frequency
-- Useful for load testing and validating collector pipelines
-
-#### `otel-config.yaml`
-Main configuration file for the OpenTelemetry Collector.
-- **Receivers**: Accepts OTLP traces/metrics via gRPC (port 4317) and HTTP (port 4318); collects host metrics (CPU, memory, filesystem)
-- **Processors**: Enriches telemetry with resource attributes, detects system information, batches data for efficiency
-- **Exporters**: Sends data to SigNoz backend (replace with your credentials) and outputs debug logs
-- **Extensions**: Provides health checks (port 13133), profiling API (port 1777), and z-pages (port 55679) for introspection
-- **Service**: Defines two pipelines—metrics and traces—connecting receivers → processors → exporters
-
-#### `values.yaml`
-Helm chart configuration file for deploying the collector to Kubernetes.
-- Configures the OpenTelemetry Collector Contrib image version (0.142.0)
-- Defines Kubernetes service ports for health checks, profiling, and z-pages
-- Mirrors the full collector configuration from `otel-config.yaml` in Helm values format
-- Used by `helm install` or `helm upgrade` commands to deploy to clusters
-- Allows easy credential and endpoint management across environments
+1.  **SigNoz Account**: You need an ingestion key to send data to SigNoz.
+    - [Sign up for a free account](https://signoz.io/teams/) if you haven't already.
+    - Get your key from `Settings -> Ingestion`.
+2.  **Git**: Clone this repository to access the config files.
+    ```bash
+    git clone git@github.com:SigNoz/examples.git
+    cd examples/otelcol-contrib
+    ```
 
 ---
 
-### Builder Directory
+## 🚀 Quick Start
 
-The `builder/` directory contains tooling to compile a custom OpenTelemetry Collector binary with selected components.
+### Method 1: Docker (Recommended for Testing)
 
-#### `builder/builder-config.yaml`
-Configuration manifest that specifies which OpenTelemetry components to include in the custom build.
-- **Receivers**: OTLP receiver and Host Metrics receiver
-- **Processors**: Batch processor, resource detection processor, and resource processor
-- **Exporters**: OTLP exporter (for sending data to backends) and Debug exporter (for logging)
-- **Extensions**: Health check, pprof (profiling), and z-pages (introspection) extensions
-- Read by the OpenTelemetry Collector Builder to generate the collector binary
-- All components pinned to version 0.142.0 for consistency
+Run the official Contrib image with our custom configuration.
 
-#### `builder/Dockerfile`
-Multi-stage Dockerfile that builds a custom collector image.
-- Uses `otel/opentelemetry-collector-builder:0.142.0` as the base image
-- Installs `git` (required by the builder to fetch component dependencies)
-- Switches to a non-root user (10001) for security
-- Compiles a custom collector binary based on `builder-config.yaml`
-- Output image contains only the selected components, resulting in a smaller binary
+1.  **Update Configuration**:
+    Open `otel-config.yaml` and replace `<SIGNOZ-INGESTION-KEY>` and `<region>` with your actual values.
 
-#### `builder/ocb`
-The OpenTelemetry Collector Builder executable.
-- Pre-compiled binary that reads `builder-config.yaml`
-- Generates custom Go code for the collector binary
-- Handles dependency resolution and builds the final executable
-- Can be invoked via Docker or directly on the host
+2.  **Run Container**:
+    ```bash
+    docker run \
+      -v $(pwd)/otel-config.yaml:/etc/otelcol-contrib/config.yaml \
+      -p 4317:4317 -p 4318:4318 \
+      -p 13133:13133 -p 1777:1777 -p 55679:55679 \
+      --rm --name otelcol-contrib \
+      otel/opentelemetry-collector-contrib:0.142.0
+    ```
 
-#### `builder/_build/` (Generated Output)
-Directory containing auto-generated build artifacts (created when builder runs).
-- **main.go**: Generated entry point for the custom collector
-- **components.go**: Factory definitions for all selected receivers, processors, exporters, and extensions
-- **go.mod**: Go module file with all component dependencies pinned
-- Contains the compiled binary `custom-contrib-collector` (platform-specific)
+3.  **Verify**:
+    ```bash
+    curl localhost:13133
+    # Output: Server available
+    ```
 
----
+### Method 2: Kubernetes (Helm)
 
-## Quick Start
+Deploy the collector to a Kubernetes cluster using the official Helm chart and our `values.yaml`.
 
-### Option 1: Run Locally
+1.  **Update Configuration**:
+    Open `values.yaml` and update the `config.exporters.otlp` section with your SigNoz region and Ingestion Key.
 
-1. Update credentials in `otel-config.yaml`:
-   ```yaml
-   exporters:
-     otlp:
-       endpoint: "https://ingest.<your-region>.signoz.cloud:443"
-       headers:
-         signoz-ingestion-key: "<YOUR-KEY>"
-   ```
+2.  **Install Chart**:
+    ```bash
+    helm repo add open-telemetry [https://open-telemetry.github.io/opentelemetry-helm-charts](https://open-telemetry.github.io/opentelemetry-helm-charts)
+    helm install -f values.yaml otelcol-contrib open-telemetry/opentelemetry-collector
+    ```
 
-2. Start the collector (assuming binary is built):
-   ```bash
-   ./builder/_build/custom-contrib-collector --config otel-config.yaml
-   ```
-
-3. In another terminal, generate load:
-   ```bash
-   bash contrib_load_generator.sh localhost
-   ```
-
-### Option 2: Deploy to Kubernetes
-
-1. Install the OpenTelemetry Helm Chart:
-   ```bash
-   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-   helm install otel-collector open-telemetry/opentelemetry-collector \
-     -f values.yaml -n monitoring --create-namespace
-   ```
-
-2. Update ingestion credentials in `values.yaml` before installation.
-
-### Option 3: Build Custom Collector with Docker
-
-1. Build the custom collector image:
-   ```bash
-   cd builder && docker build -t custom-collector:latest .
-   ```
-
-2. Run the container:
-   ```bash
-   docker run -p 4317:4317 -p 4318:4318 -p 13133:13133 \
-     -v $(pwd)/otel-config.yaml:/config.yaml \
-     custom-collector:latest --config /config.yaml
-   ```
+3.  **Access Collector Locally**:
+    Forward ports to your local machine to verify or send test data:
+    ```bash
+    kubectl port-forward svc/otelcol-contrib-opentelemetry-collector \
+      4317:4317 4318:4318 13133:13133 1777:1777 55679:55679
+    ```
 
 ---
 
-## Port Mappings
+## 🛠️ Advanced: Build Your Own Collector
 
-| Service       | Port  | Protocol | Purpose                          |
-|---------------|-------|----------|----------------------------------|
-| OTLP gRPC     | 4317  | gRPC     | Receive traces and metrics       |
-| OTLP HTTP     | 4318  | HTTP     | Receive traces and metrics       |
-| Health Check  | 13133 | HTTP     | Liveness/readiness probes        |
-| Profiling     | 1777  | HTTP     | pprof debugging endpoints        |
-| Z-Pages       | 55679 | HTTP     | Runtime inspection & traces      |
+If you want to reduce binary size and improve security, you can build a custom distribution containing *only* the components you need using the **OpenTelemetry Collector Builder (OCB)**.
+
+### 1. Setup OCB
+Download the builder binary for your architecture (example for Linux AMD64):
+```bash
+cd builder
+
+curl --proto '=https' --tlsv1.2 -fL -o ocb \
+[https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd%2Fbuilder%2Fv0.120.0/ocb_0.120.0_linux_amd64](https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd%2Fbuilder%2Fv0.120.0/ocb_0.120.0_linux_amd64)
+
+chmod +x ocb
+```
+
+### 2. Compile
+We use `builder-config.yaml` to define the exact components to include.
+```bash
+./ocb --config builder-config.yaml
+```
+*This generates a `_build` directory containing your custom binary.*
+
+### 3. Run Custom Binary
+Run the newly built collector using the standard configuration file:
+```bash
+./_build/custom-contrib-collector --config ../otel-config.yaml
+```
+
+---
+
+## ⚡ Generating Traffic
+
+We provide a script to generate synthetic OTLP traces and metrics to verify your pipeline.
+
+1.  **Make executable**:
+    ```bash
+    chmod +x contrib_load_generator.sh
+    ```
+
+2.  **Run Generator**:
+    ```bash
+    # Usage: ./contrib_load_generator.sh <HOST>
+    ./contrib_load_generator.sh localhost
+    ```
+    *This will send data to port `4318` (HTTP OTLP) for 30 seconds.*
+
+---
+
+## 📂 File Structure & Descriptions
+
+### Configuration Files
+
+| File | Description |
+|------|-------------|
+| `otel-config.yaml` | **Main Collector Config.** Defines the pipeline: <br>• **Receivers:** `otlp`, `hostmetrics` <br>• **Processors:** `resourcedetection` (system info), `resource` (tags), `batch` <br>• **Exporters:** `otlp` (SigNoz), `debug` |
+| `values.yaml` | **Helm Config.** Overrides for the `open-telemetry/opentelemetry-collector` chart. Contains a replica of the config in `otel-config.yaml` formatted for Helm. |
+| `contrib_load_generator.sh` | **Traffic Gen.** A Bash script that sends dummy telemetry (traces/metrics) to the collector via `curl`. |
+
+### Builder Directory (`/builder`)
+
+| File | Description |
+|------|-------------|
+| `builder-config.yaml` | **Manifest.** Lists the specific Go modules (receivers/processors/exporters) to include in the custom build. |
+| `Dockerfile` | **Multi-stage Build.** A Dockerfile that uses OCB to compile the binary and packages it into a minimal production image. |
+| `_build/` | **Artifacts.** (Created after running OCB) Contains the compiled binary `custom-contrib-collector`. |
 
 ---
 
 ## Architecture
 
+```text
++-------------------+       +---------------------------------------------+
+|    Application    |       |             OpenTelemetry Collector         |
+|   (Load Gen)      |       |                                             |
++--------+----------+       |    +-----------+    +---------+    +-----+  |
+         | OTLP             |    |           |    |         |    |     |  |
+         v                  |    | Receivers +--->+ Processors+--->+ Exp  |
++--------+----------+       |    |           |    |         |    |     |  |
+|    Host Metrics   |       |    +-----+-----+    +---------+    +--+--+  |
+|      (CPU/RAM)    +------>+          ^                            |     |
++-------------------+       |          |                            |     |
+                            +---------------------------------------+-----+
+                                       |                            |
+                                       |                            |
+                                  +----+-----+               +------+-----+
+                                  |  Console |               |   SigNoz   |
+                                  |  (Debug) |               |   Cloud    |
+                                  +----------+               +------------+
 ```
-Applications
-    ↓ (OTLP/gRPC or HTTP)
-    ↓
-┌─────────────────────────────┐
-│  OpenTelemetry Collector    │
-├─────────────────────────────┤
-│ Receivers (OTLP, HostMet)   │
-│ Processors (Batch, Resource)│
-│ Exporters (OTLP, Debug)     │
-└─────────────────────────────┘
-    ↓
-    ├→ SigNoz Backend (OTLP exporter)
-    └→ Logs (Debug exporter)
-```
 
----
+## Useful Ports
 
-## Customization
-
-To modify the collector components:
-
-1. Edit `builder/builder-config.yaml` to add/remove receivers, processors, or exporters
-2. Rebuild the binary in `builder/_build/`
-3. Update `otel-config.yaml` to configure the new components
-4. Restart the collector
-
----
+| Port | Protocol | Usage |
+|------|----------|-------|
+| `4317` | gRPC | OTLP Receiver (Traces/Metrics) |
+| `4318` | HTTP | OTLP Receiver (Traces/Metrics) |
+| `13133` | HTTP | Health Check Extension |
+| `1777` | HTTP | pprof Profiling Extension |
+| `55679`| HTTP | zPages Extension |
 
 ## Resources
 
-- [OpenTelemetry Collector Documentation](https://opentelemetry.io/docs/collector/)
-- [Collector Contrib Components](https://github.com/open-telemetry/opentelemetry-collector-contrib)
-- [SigNoz Setup Guide](https://signoz.io/docs/)
+- [OpenTelemetry Collector Docs](https://opentelemetry.io/docs/collector/)
+- [SigNoz Documentation](https://signoz.io/docs/)
+- [OCB (Builder) Documentation](https://opentelemetry.io/docs/collector/custom-collector/)
