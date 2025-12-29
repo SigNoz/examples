@@ -63,7 +63,7 @@ service:
     
     traces:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [resourcedetection, resource, batch]
       exporters: [otlp, debug]
 
   # extensions are configured separately from pipelines
