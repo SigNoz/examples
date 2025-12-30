@@ -1,0 +1,102 @@
+# -----------------------------------------------------------------------------
+# helm configuration
+
+mode: deployment
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: 0.142.0
+
+service:
+  enabled: true
+  type: ClusterIP
+
+# helm chart already configures default ports
+ports:
+  health:
+    enabled: true
+    containerPort: 13133
+    servicePort: 13133
+    protocol: TCP
+  pprof:
+    enabled: true
+    containerPort: 1777
+    servicePort: 1777
+    protocol: TCP
+
+  zpages:
+    enabled: true
+    containerPort: 55679
+    servicePort: 55679
+    protocol: TCP
+
+# -----------------------------------------------------------------------------
+# collector configuration
+config:
+  receivers:
+    hostmetrics:
+      collection_interval: 10s
+      scrapers:
+        cpu:
+        memory:
+        filesystem:
+
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    resourcedetection:
+      detectors: [system]
+
+    resource:
+      attributes:
+        - key: service.name
+          value: "otelcol-contrib-demo"
+          action: upsert
+
+        - key: service.namespace
+          value: "infra"
+          action: upsert
+
+        - key: deployment.environment
+          value: "demo"
+          action: upsert
+
+    batch: {}
+    
+  exporters:
+    otlp:
+      endpoint: "https://ingest.in.signoz.cloud:443"
+      tls:
+        insecure: false
+      headers:
+        signoz-ingestion-key: "Xtl6GXqizQFJS0wlMDdQ0z-Mc2PG7I4Kp9GY"
+    debug:
+      verbosity: normal
+
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+    pprof:
+      endpoint: 0.0.0.0:1777
+    zpages:
+      endpoint: 0.0.0.0:55679
+
+  service:
+    pipelines:
+      metrics:
+        receivers: [hostmetrics, otlp]
+        processors: [resourcedetection, resource, batch]
+        exporters: [otlp]
+      
+      traces:
+        receivers: [otlp]
+        processors: [resource, batch]
+        exporters: [otlp, debug]
+
+    # extensions are configured separately from pipelines
+    extensions: [health_check, pprof, zpages]
