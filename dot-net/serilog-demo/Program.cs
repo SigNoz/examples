@@ -27,13 +27,9 @@ if (string.IsNullOrEmpty(signozIngestionKey))
     missingVars.Add("SIGNOZ_INGESTION_KEY");
 
 // ===== Configure Serilog =====
+// Load base configuration from appsettings.json
 var serilogConfig = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .Enrich.WithSpan()  // Add OpenTelemetry trace context (TraceId, SpanId)
-    .Enrich.WithProperty("MachineName", System.Environment.MachineName)
-    .WriteTo.Console();
+    .ReadFrom.Configuration(builder.Configuration);
 
 // Add OpenTelemetry sink if SigNoz is configured
 if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
