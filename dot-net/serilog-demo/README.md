@@ -52,34 +52,38 @@ git clone https://github.com/SigNoz/signoz-examples.git
 cd signoz-examples/dotnet/serilog-demo
 ```
 
+
 ### Step 2: Configure SigNoz Credentials
 
 You have two options to configure your SigNoz credentials:
 
-#### Option 1: Using .env file (Recommended)
+#### Option 1: Using launchSettings.json (Recommended for Local Development)
 
-Create a `.env` file in the project root:
+Edit `Properties/launchSettings.json` and add your SigNoz credentials:
 
-```bash
-cp .env.example .env
+```json
+{
+  "profiles": {
+    "http": {
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "SigNoz__Region": "in",
+        "SigNoz__IngestionKey": "your-actual-key-here"
+      }
+    }
+  }
+}
 ```
 
-Then edit `.env` and add your credentials:
-
-```bash
-SIGNOZ_REGION=in  # Your SigNoz region (in, us, eu, etc.)
-SIGNOZ_INGESTION_KEY=your-actual-key-here
-```
-
-> **Note**: Replace `your-actual-key-here` with your actual SigNoz ingestion key from the prerequisites.
+> **Note**: Replace `your-actual-key-here` with your actual SigNoz ingestion key. The double underscore (`__`) represents nested configuration (`SigNoz:Region` in appsettings.json).
 
 #### Option 2: Using Environment Variables
 
-Alternatively, export environment variables in your shell:
+Export environment variables in your shell before running:
 
 ```bash
-export SIGNOZ_REGION="in"  # Your SigNoz region (in, us, eu, etc.)
-export SIGNOZ_INGESTION_KEY="your-actual-key-here"
+export SigNoz__Region=in
+export SigNoz__IngestionKey=your-actual-key-here
 ```
 
 ### Step 3: Run the Application

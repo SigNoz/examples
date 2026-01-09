@@ -4,63 +4,27 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Exporter;
 using System.Diagnostics;
-using DotNetEnv;
-
-// Load .env file if it exists
-Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===== Configure Service Info and SigNoz =====
-var serviceName = "serilog-demo-api";
-var serviceVersion = "1.0.0";
-
-// Read SigNoz configuration from environment variables
-var signozRegion = Environment.GetEnvironmentVariable("SIGNOZ_REGION");
-var signozIngestionKey = Environment.GetEnvironmentVariable("SIGNOZ_INGESTION_KEY");
-
-// Validate configuration
-var missingVars = new List<string>();
-if (string.IsNullOrEmpty(signozRegion))
-    missingVars.Add("SIGNOZ_REGION");
-if (string.IsNullOrEmpty(signozIngestionKey))
-    missingVars.Add("SIGNOZ_INGESTION_KEY");
-
 // ===== Configure Serilog =====
-// Load base configuration from appsettings.json
-var serilogConfig = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration);
-
-// Add OpenTelemetry sink if SigNoz is configured
-if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
-{
-    var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443/v1/logs";
-    serilogConfig.WriteTo.OpenTelemetry(options =>
-    {
-        options.Endpoint = signozEndpoint;
-        options.Protocol = Serilog.Sinks.OpenTelemetry.OtlpProtocol.Grpc;
-        options.Headers = new Dictionary<string, string>
-        {
-            ["signoz-ingestion-key"] = signozIngestionKey
-        };
-        options.ResourceAttributes = new Dictionary<string, object>
-        {
-            ["service.name"] = serviceName,
-            ["service.version"] = serviceVersion
-        };
-    });
-    Log.Information("OTLP log exporter configured for SigNoz region: {Region}", signozRegion);
-}
-
-Log.Logger = serilogConfig.CreateLogger();
+// All configuration is in appsettings.json
+// Override with environment variables:
+//   - SigNoz__Region (e.g., "in", "us", "eu")
+//   - SigNoz__IngestionKey (your SigNoz ingestion key)
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateLogger();
 
 builder.Host.UseSerilog();
 
-if (missingVars.Count > 0)
-{
-    Log.Warning("Missing SigNoz configuration: {MissingVariables}. Traces and logs will only be exported to console.",
-        string.Join(", ", missingVars));
-}
+Log.Information("Starting serilog-demo-api v1.0.0");
+
+// Read configuration values
+var serviceName = builder.Configuration.GetValue<string>("Serilog:WriteTo:1:Args:resourceAttributes:service.name") ?? "serilog-demo-api";
+var serviceVersion = builder.Configuration.GetValue<string>("Serilog:WriteTo:1:Args:resourceAttributes:service.version") ?? "1.0.0";
+var signozRegion = builder.Configuration.GetValue<string>("SigNoz:Region");
+var signozIngestionKey = builder.Configuration.GetValue<string>("SigNoz:IngestionKey");
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(tracerProviderBuilder =>
@@ -85,17 +49,14 @@ builder.Services.AddOpenTelemetry()
             .AddConsoleExporter(); // Keep console exporter for local debugging
 
         // Add OTLP exporter for SigNoz if both region and key are available
-        if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
+        var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
+        tracerProviderBuilder.AddOtlpExporter(options =>
         {
-            var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
-            tracerProviderBuilder.AddOtlpExporter(options =>
-            {
-                options.Endpoint = new Uri(signozEndpoint);
-                options.Protocol = OtlpExportProtocol.Grpc;
-                options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
-            });
-            Log.Information("OTLP exporter configured for SigNoz region: {Region}", signozRegion);
-        }
+            options.Endpoint = new Uri(signozEndpoint);
+            options.Protocol = OtlpExportProtocol.Grpc;
+            options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
+        });
+        Log.Information("OTLP trace exporter configured for SigNoz region: {Region}", signozRegion);
     });
 
 // Add services
@@ -142,7 +103,7 @@ app.MapGet("/health", () => new
     Timestamp = DateTime.UtcNow
 }).WithName("HealthCheck");
 
-Log.Information("Starting {ServiceName} v{ServiceVersion}", serviceName, serviceVersion);
+Log.Information("Application started successfully");
 
 try
 {
