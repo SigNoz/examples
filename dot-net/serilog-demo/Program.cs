@@ -33,8 +33,6 @@ var serilogConfig = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .Enrich.WithSpan()  // Add OpenTelemetry trace context (TraceId, SpanId)
     .Enrich.WithProperty("MachineName", System.Environment.MachineName)
-    .Enrich.WithProperty("service.name", serviceName)
-    .Enrich.WithProperty("service.version", serviceVersion)
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
 
