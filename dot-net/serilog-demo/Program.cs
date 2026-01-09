@@ -33,8 +33,7 @@ var serilogConfig = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .Enrich.WithSpan()  // Add OpenTelemetry trace context (TraceId, SpanId)
     .Enrich.WithProperty("MachineName", System.Environment.MachineName)
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+    .WriteTo.Console();
 
 // Add OpenTelemetry sink if SigNoz is configured
 if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
