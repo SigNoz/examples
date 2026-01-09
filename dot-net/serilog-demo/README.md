@@ -1,136 +1,234 @@
-# Serilog + OpenTelemetry Demo
+# Serilog + OpenTelemetry Demo API
 
-A hands-on example demonstrating how to use Serilog for structured logging and OpenTelemetry for distributed tracing in .NET.
+A production-ready ASP.NET Core Web API demonstrating **Serilog** structured logging and **OpenTelemetry** distributed tracing with **SigNoz Cloud** integration.
 
-## Setup Complete ✅
+## Features
 
-- **.NET SDK**: 10.0.101
-- **Serilog**: 4.3.0
-- **Serilog.Sinks.Console**: 6.1.1
-- **OpenTelemetry**: 1.14.0
-- **OpenTelemetry.Exporter.Console**: 1.14.0
-- **OpenTelemetry.Exporter.OpenTelemetryProtocol**: 1.14.0 (OTLP for SigNoz)
+✨ **Serilog Structured Logging**
+- Console output with structured JSON properties
+- Request/response logging with trace context
+- Log correlation with distributed traces
 
-## What's an Activity?
+🔭 **OpenTelemetry Distributed Tracing**
+- Automatic HTTP instrumentation
+- Custom activity/span creation
+- Trace context propagation (W3C Trace Context)
+- Dual exporters: Console (local debugging) + OTLP (SigNoz)
 
-In .NET, an **Activity** is the built-in representation of a **distributed trace span**:
-- **Activity = Span** in OpenTelemetry terminology
-- Represents a unit of work (method call, HTTP request, etc.)
-- Can be nested to show parent-child relationships
-- Contains:
-  - **TraceId**: Unique ID for the entire trace
-  - **SpanId**: Unique ID for this specific span
-  - **ParentSpanId**: Links to parent span
-  - **Tags/Attributes**: Metadata as key-value pairs
-  - **Duration**: Timing information
+🎯 **Demo Endpoints**
+- `GET /health` - Health check
+- `GET /api/data` - Fetch data with trace events
+- `POST /api/data` - Create data with structured logging
+- `GET /api/external` - HTTP call with trace propagation
+- `GET /api/error` - Error handling demonstration
 
-## SigNoz Integration 🚀
+## Prerequisites
 
-The application is configured to send traces to **SigNoz** using the OTLP exporter.
+### 1. SigNoz Cloud Account
 
-### Secure Configuration Management
+1. **Sign up** for SigNoz Cloud at [https://signoz.io/](https://signoz.io/)
+2. **Navigate** to Settings → Ingestion Settings
+3. **Copy your Ingestion Key** - you'll need this
+4. **Note your region** (e.g., `in`, `us`, `eu`)
 
-SigNoz configuration (region and ingestion key) is read from **environment variables** to keep them secure and out of your code:
+> **Tip**: Keep your ingestion key handy - you'll set it as an environment variable
 
-**Option 1: Set for current session**
+### 2. Development Environment
+
+- **.NET SDK 10.0 or later**
+  ```bash
+  dotnet --version  # Should show 10.0.x or higher
+  ```
+- **Git** (to clone the repository)
+- **curl** or similar tool for testing (optional)
+
+## Quick Start
+
+### Step 1: Clone the Repository
+
 ```bash
-export SIGNOZ_REGION='in'  # or 'us', 'eu', etc.
-export SIGNOZ_INGESTION_KEY='your-key-here'
+git clone https://github.com/SigNoz/signoz-examples.git
+cd signoz-examples/dotnet/serilog-otel-api
+```
+
+### Step 2: Set Environment Variables
+
+Set your SigNoz configuration:
+
+```bash
+export SIGNOZ_REGION="in"  # Your SigNoz region (in, us, eu, etc.)
+export SIGNOZ_INGESTION_KEY="your-actual-key-here"
+```
+
+> **Note**: Replace `"your-actual-key-here"` with your actual SigNoz ingestion key from Step 1.
+
+### Step 3: Run the Application
+
+```bash
 dotnet run
 ```
 
-**Option 2: Inline (one-time use)**
-```bash
-SIGNOZ_REGION='in' SIGNOZ_INGESTION_KEY='your-key-here' dotnet run
+You should see:
+```
+[10:49:53 INF] OTLP exporter configured for SigNoz region: in
+[10:49:53 INF] Starting serilog-otel-demo-api v1.0.0
+[10:49:54 INF] Now listening on: http://localhost:5000
 ```
 
-**Option 3: Permanent setup (add to ~/.zshrc or ~/.bashrc)**
-```bash
-echo "export SIGNOZ_REGION='in'" >> ~/.zshrc
-echo "export SIGNOZ_INGESTION_KEY='your-key-here'" >> ~/.zshrc
-source ~/.zshrc
-```
+The API is now running on `http://localhost:5000` (or the port shown in your console).
 
-**Helper Script:**
-```bash
-./setup-signoz.sh  # Check if configuration is set and get instructions
-```
+### Step 4: Generate Sample Traffic
 
-### Without SigNoz Configuration
-
-If you run without setting the region or key, the app will:
-- ⚠️ Show a warning message listing missing variables
-- ✅ Still work normally
-- ✅ Export traces to console only (for local debugging)
-
-## Running the Demo
+In a **new terminal**, run the load generator:
 
 ```bash
-# Build the project
-dotnet build
-
-# Run the application
-dotnet run
+chmod +x load-generator.sh
+./load-generator.sh
 ```
 
-## Output Example
+This script will continuously make requests to all endpoints, generating logs and traces.
 
-The application produces both **Serilog logs** and **OpenTelemetry traces**:
+### Step 5: View in SigNoz
 
+1. Go to your [SigNoz Cloud dashboard](https://signoz.io)
+2. Navigate to **Services**
+3. Click on **serilog-otel-demo-api**
+4. Explore:
+   - **Traces** - See distributed traces with parent-child relationships
+   - **Service Map** - Visualize external service calls
+   - **Logs** (if configured) - Correlated with traces
+
+## What You'll See
+
+### Console Output
+
+The application outputs both **Serilog logs** and **OpenTelemetry traces**:
+
+**Logs:**
 ```
-[19:02:21 INF] Application starting up...
-[19:02:21 INF] Starting main operation
-[19:02:21 DBG] DoWork method called
-[19:02:21 INF] Processing user 123 with name John Doe
-[19:02:21 WRN] This is a warning message - just for demonstration
+[10:50:29 INF] Creating new data item: {"Name": "Test Item", "Category": "Demo"}
+[10:50:29 INF] Created data item with ID: 1, Name: Test Item, Category: Demo
+```
 
-Activity.TraceId:            fa000743402cee68aa2a10c12ef03166
-Activity.SpanId:             075ceaf5343577cf
-Activity.DisplayName:        DoWork
+**Traces:**
+```
+Activity.TraceId:            4efbaf00c6a28ba6fad2635ba453a020
+Activity.SpanId:             82e941c42965055c
+Activity.DisplayName:        CreateData
 Activity.Tags:
-    work.id: d939ef26-f361-49fc-9815-d34e208812fc
-    work.status: completed
-...
+    data.name: Test Item
+    data.category: Demo
+Activity.Events:
+    DataItemCreated
 ```
 
-## Next Steps
+### SigNoz Dashboard
 
-You can now incrementally add features such as:
+🔍 **Trace View**: See complete HTTP request traces with nested spans  
+📊 **Service Metrics**: Request rates, latencies, error rates  
+🎯 **Trace Propagation**: Observe how trace context flows to external services  
+❌ **Error Tracking**: Errors from `/api/error` endpoint with full stack traces
 
-1. **Serilog Enhancements**
-   - File sinks
-   - JSON formatting
-   - Enrichers (machine name, thread ID, etc.)
-   - Minimum level overrides
-   - Filtering
+## Testing Individual Endpoints
 
-2. **OpenTelemetry Enhancements**
-   - OTLP exporter (for SigNoz, Jaeger, etc.)
-   - HTTP instrumentation
-   - Database instrumentation
-   - Custom metrics
-   - Baggage propagation
+```bash
+# Health check
+curl http://localhost:5000/health
 
-3. **Integration**
-   - Bridge Serilog logs to OpenTelemetry
-   - Correlation between logs and traces
-   - Context propagation
+# Get all data
+curl http://localhost:5000/api/data
+
+# Create new data
+curl -X POST http://localhost:5000/api/data \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My Item","category":"Electronics"}'
+
+# External service call (with trace propagation)
+curl http://localhost:5000/api/external
+
+# Trigger error (for error tracking demo)
+curl http://localhost:5000/api/error
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SIGNOZ_REGION` | Your SigNoz cloud region | `in`, `us`, `eu` |
+| `SIGNOZ_INGESTION_KEY` | Your SigNoz ingestion key | `abc123...` |
+
+### appsettings.json
+
+Minimal configuration - most settings are in code for clarity.
 
 ## Project Structure
 
 ```
-serilog-demo/
-├── Program.cs              # Main application code
-├── SerilogOtelDemo.csproj  # Project file with dependencies
-└── README.md               # This file
+serilog-otel-api/
+├── Controllers/
+│   ├── DataController.cs      # GET/POST with trace events
+│   ├── ExternalController.cs  # Trace propagation demo
+│   └── ErrorController.cs     # Error handling demo
+├── Models/
+│   └── DataItem.cs            # Data model
+├── Program.cs                 # App configuration (Serilog + OTEL)
+├── load-generator.sh          # Traffic generator script
+└── README.md                  # This file
 ```
 
-## Ready to Experiment!
+## Key Features Demonstrated
 
-The basic setup is complete. You can now:
-- Modify `Program.cs` to add more logging statements
-- Create additional spans and nested operations
-- Experiment with different log levels and structured properties
-- Add custom tags to your traces
+### 1. Structured Logging (Serilog)
+```csharp
+_logger.LogInformation("Created data item with ID: {Id}, Name: {Name}", 
+    newItem.Id, newItem.Name);
+```
 
-Let me know when you're ready to add more features! 🚀
+### 2. Custom Trace Events
+```csharp
+activity?.AddEvent(new ActivityEvent("DataItemCreated",
+    tags: new ActivityTagsCollection
+    {
+        { "item.id", newItem.Id },
+        { "item.name", newItem.Name }
+    }));
+```
+
+### 3. Trace Propagation
+The `ExternalController` automatically propagates W3C Trace Context headers to `httpbin.org`:
+- `traceparent`: Contains trace ID, span ID, and flags
+- `tracestate`: Additional vendor-specific data
+
+### 4. Log-Trace Correlation
+Logs include `TraceId` and `SpanId` for correlation:
+```json
+{
+  "TraceId": "4efbaf00c6a28ba6fad2635ba453a020",
+  "SpanId": "82e941c42965055c"
+}
+```
+
+## Troubleshooting
+
+**Problem**: "Missing SigNoz configuration" warning
+- **Solution**: Set both `SIGNOZ_REGION` and `SIGNOZ_INGESTION_KEY` environment variables
+
+**Problem**: Traces not appearing in SigNoz
+- **Check**: Are both environment variables set correctly?
+- **Check**: Is the region correct?
+- **Check**: Wait 30-60 seconds for data to appear
+
+**Problem**: Port already in use
+- **Solution**: The app uses a dynamic port. Check the console output for the actual port
+
+## Learn More
+
+- [SigNoz Documentation](https://signoz.io/docs/)
+- [OpenTelemetry .NET](https://opentelemetry.io/docs/languages/net/)
+- [Serilog Documentation](https://serilog.net/)
+
+## License
+
+This example is part of the SigNoz examples repository. See the main repository for license information.

@@ -1,18 +1,26 @@
-﻿using Serilog;
-using OpenTelemetry;
-using OpenTelemetry.Trace;
+using Serilog;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using OpenTelemetry.Exporter;
 using System.Diagnostics;
 
-// Configure Serilog
+var builder = WebApplication.CreateBuilder(args);
+
+// ===== Configure Serilog =====
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .WriteTo.Console()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
     .CreateLogger();
 
-// Configure OpenTelemetry
-var serviceName = "serilog-otel-demo";
+builder.Host.UseSerilog();
+
+// ===== Configure OpenTelemetry Tracing =====
+var serviceName = "serilog-otel-demo-api";
 var serviceVersion = "1.0.0";
 
 // Read SigNoz configuration from environment variables
@@ -32,75 +40,97 @@ if (missingVars.Any())
         string.Join(", ", missingVars));
 }
 
-var tracerProviderBuilder = Sdk.CreateTracerProviderBuilder()
-    .AddSource(serviceName)
-    .SetResourceBuilder(
-        ResourceBuilder.CreateDefault()
-            .AddService(serviceName: serviceName, serviceVersion: serviceVersion))
-    .AddConsoleExporter(); // Keep console exporter for local debugging
-
-// Add OTLP exporter for SigNoz if both region and key are available
-if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
-{
-    var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
-    tracerProviderBuilder.AddOtlpExporter(options =>
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracerProviderBuilder =>
     {
-        options.Endpoint = new Uri(signozEndpoint);
-        options.Protocol = OtlpExportProtocol.Grpc;
-        options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
+        tracerProviderBuilder
+            .AddSource(serviceName)
+            .SetResourceBuilder(
+                ResourceBuilder.CreateDefault()
+                    .AddService(serviceName: serviceName, serviceVersion: serviceVersion))
+            .AddAspNetCoreInstrumentation(options =>
+            {
+                options.RecordException = true;
+                options.EnrichWithHttpRequest = (activity, request) =>
+                {
+                    activity.SetTag("http.client_ip", request.HttpContext.Connection.RemoteIpAddress?.ToString());
+                };
+            })
+            .AddHttpClientInstrumentation(options =>
+            {
+                options.RecordException = true;
+            })
+            .AddConsoleExporter(); // Keep console exporter for local debugging
+
+        // Add OTLP exporter for SigNoz if both region and key are available
+        if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
+        {
+            var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
+            tracerProviderBuilder.AddOtlpExporter(options =>
+            {
+                options.Endpoint = new Uri(signozEndpoint);
+                options.Protocol = OtlpExportProtocol.Grpc;
+                options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
+            });
+            Log.Information("OTLP exporter configured for SigNoz region: {Region}", signozRegion);
+        }
     });
-    Log.Information("OTLP exporter configured for SigNoz region: {Region}", signozRegion);
+
+// Add services
+builder.Services.AddControllers();
+builder.Services.AddHttpClient(); // Required for ExternalController
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
-using var tracerProvider = tracerProviderBuilder.Build();
+// Add Serilog request logging
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress);
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
 
-var activitySource = new ActivitySource(serviceName);
+        // Add trace context to logs
+        var activity = Activity.Current;
+        if (activity != null)
+        {
+            diagnosticContext.Set("TraceId", activity.TraceId.ToString());
+            diagnosticContext.Set("SpanId", activity.SpanId.ToString());
+        }
+    };
+});
 
-// Main program
-Log.Information("Application starting up...");
+app.MapControllers();
+
+// Add a simple health check endpoint
+app.MapGet("/health", () => new
+{
+    Status = "Healthy",
+    Service = serviceName,
+    Version = serviceVersion,
+    Timestamp = DateTime.UtcNow
+}).WithName("HealthCheck");
+
+Log.Information("Starting {ServiceName} v{ServiceVersion}", serviceName, serviceVersion);
 
 try
 {
-    // Create a trace span
-    using (var activity = activitySource.StartActivity("MainOperation"))
-    {
-        activity?.SetTag("operation.type", "serilog-demo");
-
-        Log.Information("Starting main operation");
-
-        // Simulate some work
-        DoWork();
-
-        Log.Information("Main operation completed successfully");
-    }
+    app.Run();
 }
 catch (Exception ex)
 {
-    Log.Error(ex, "An error occurred during execution");
+    Log.Fatal(ex, "Application terminated unexpectedly");
 }
 finally
 {
-    Log.Information("Application shutting down...");
     Log.CloseAndFlush();
-}
-
-void DoWork()
-{
-    using (var activity = activitySource.StartActivity("DoWork"))
-    {
-        activity?.SetTag("work.id", Guid.NewGuid().ToString());
-
-        Log.Debug("DoWork method called");
-
-        // Log with structured data
-        var user = new { Name = "John Doe", Id = 123 };
-        Log.Information("Processing user {UserId} with name {UserName}", user.Id, user.Name);
-
-        // Simulate some processing
-        Thread.Sleep(100);
-
-        Log.Warning("This is a warning message - just for demonstration");
-
-        activity?.SetTag("work.status", "completed");
-    }
 }
