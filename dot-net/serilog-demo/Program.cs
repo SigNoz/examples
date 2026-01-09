@@ -11,8 +11,7 @@ Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .Enrich.WithMachineName()
-    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("MachineName", System.Environment.MachineName)
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
     .CreateLogger();
@@ -20,7 +19,7 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // ===== Configure OpenTelemetry Tracing =====
-var serviceName = "serilog-otel-demo-api";
+var serviceName = "serilog-demo-api";
 var serviceVersion = "1.0.0";
 
 // Read SigNoz configuration from environment variables
@@ -34,7 +33,7 @@ if (string.IsNullOrEmpty(signozRegion))
 if (string.IsNullOrEmpty(signozIngestionKey))
     missingVars.Add("SIGNOZ_INGESTION_KEY");
 
-if (missingVars.Any())
+if (missingVars.Count > 0)
 {
     Log.Warning("Missing SigNoz configuration: {MissingVariables}. Traces will only be exported to console.",
         string.Join(", ", missingVars));

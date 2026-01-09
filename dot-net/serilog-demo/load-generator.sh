@@ -3,7 +3,7 @@
 # Load Generator for Serilog + OpenTelemetry Demo API
 # This script generates sample traffic to demonstrate tracing and logging
 
-API_URL="${API_URL:-http://localhost:5000}"
+API_URL="${API_URL:-http://localhost:5242}"
 SLEEP_TIME="${SLEEP_TIME:-2}"
 
 # Colors for output

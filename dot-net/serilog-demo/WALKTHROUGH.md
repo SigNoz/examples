@@ -117,7 +117,7 @@ builder.Services.AddOpenTelemetry()
 
 **DataController Example:**
 ```csharp
-private static readonly ActivitySource ActivitySource = new("serilog-otel-demo-api");
+private static readonly ActivitySource ActivitySource = new("serilog-demo-api");
 
 [HttpGet]
 public ActionResult<IEnumerable<DataItem>> GetData()
@@ -332,7 +332,7 @@ dotnet run | grep -A 20 "Activity.TraceId"
 ### Check Trace Propagation
 
 ```bash
-curl -v http://localhost:5000/api/external 2>&1 | grep traceparent
+curl -v http://localhost:5242/api/external 2>&1 | grep traceparent
 ```
 
 ### Verify SigNoz Connection

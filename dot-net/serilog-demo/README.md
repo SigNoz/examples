@@ -48,7 +48,7 @@ A production-ready ASP.NET Core Web API demonstrating **Serilog** structured log
 
 ```bash
 git clone https://github.com/SigNoz/signoz-examples.git
-cd signoz-examples/dotnet/serilog-otel-api
+cd signoz-examples/dotnet/serilog-demo
 ```
 
 ### Step 2: Set Environment Variables
@@ -72,10 +72,10 @@ You should see:
 ```
 [10:49:53 INF] OTLP exporter configured for SigNoz region: in
 [10:49:53 INF] Starting serilog-otel-demo-api v1.0.0
-[10:49:54 INF] Now listening on: http://localhost:5000
+[10:49:54 INF] Now listening on: http://localhost:5242
 ```
 
-The API is now running on `http://localhost:5000` (or the port shown in your console).
+The API is now running on `http://localhost:5242` (or the port shown in your console).
 
 ### Step 4: Generate Sample Traffic
 
@@ -133,21 +133,21 @@ Activity.Events:
 
 ```bash
 # Health check
-curl http://localhost:5000/health
+curl http://localhost:5242/health
 
 # Get all data
-curl http://localhost:5000/api/data
+curl http://localhost:5242/api/data
 
 # Create new data
-curl -X POST http://localhost:5000/api/data \
+curl -X POST http://localhost:5242/api/data \
   -H "Content-Type: application/json" \
   -d '{"name":"My Item","category":"Electronics"}'
 
 # External service call (with trace propagation)
-curl http://localhost:5000/api/external
+curl http://localhost:5242/api/external
 
 # Trigger error (for error tracking demo)
-curl http://localhost:5000/api/error
+curl http://localhost:5242/api/error
 ```
 
 ## Configuration
@@ -166,7 +166,7 @@ Minimal configuration - most settings are in code for clarity.
 ## Project Structure
 
 ```
-serilog-otel-api/
+serilog-demo/
 ├── Controllers/
 │   ├── DataController.cs      # GET/POST with trace events
 │   ├── ExternalController.cs  # Trace propagation demo
