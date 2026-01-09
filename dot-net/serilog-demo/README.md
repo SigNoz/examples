@@ -116,8 +116,7 @@ This script will continuously make requests to all endpoints, generating logs an
 3. Click on **serilog-demo-api**
 4. Explore:
    - **Traces** - See distributed traces with parent-child relationships
-   - **Service Map** - Visualize external service calls
-   - **Logs** (if configured) - Correlated with traces
+   - **Logs** See structured logs correlated with traces
 
 ## What You'll See
 
@@ -220,14 +219,13 @@ activity?.AddEvent(new ActivityEvent("DataItemCreated",
 ### 3. Trace Propagation
 The `ExternalController` automatically propagates W3C Trace Context headers to `httpbin.org`:
 - `traceparent`: Contains trace ID, span ID, and flags
-- `tracestate`: Additional vendor-specific data
 
 ### 4. Log-Trace Correlation
 Logs include `TraceId` and `SpanId` for correlation:
 ```json
 {
-  "TraceId": "4efbaf00c6a28ba6fad2635ba453a020",
-  "SpanId": "82e941c42965055c"
+  "TraceId": "4efbaf00c6...",
+  "SpanId": "82e941..."
 }
 ```
 

@@ -2,36 +2,6 @@
 
 This document explains the technical implementation details of the Serilog and OpenTelemetry integration in this demo application.
 
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     ASP.NET Core Web API                     │
-│                                                               │
-│  ┌─────────────────┐         ┌──────────────────┐           │
-│  │   Controllers   │         │   Middleware     │           │
-│  │  - Data         │◄────────┤  - Request Log   │           │
-│  │  - External     │         │  - Exception     │           │
-│  │  - Error        │         └──────────────────┘           │
-│  └────────┬────────┘                                         │
-│           │                                                   │
-│           ▼                                                   │
-│  ┌─────────────────┐         ┌──────────────────┐           │
-│  │    Serilog      │         │  OpenTelemetry   │           │
-│  │  - Structured   │         │  - ActivitySource│           │
-│  │    Logging      │         │  - Instrumentation│          │
-│  │  - Enrichers    │         │  - Propagation   │           │
-│  └────────┬────────┘         └────────┬─────────┘           │
-│           │                            │                      │
-└───────────┼────────────────────────────┼──────────────────────┘
-            │                            │
-            ▼                            ▼
-    ┌───────────────┐          ┌─────────────────┐
-    │   Console     │          │  OTLP Exporter  │
-    │   Output      │          │  (SigNoz Cloud) │
-    └───────────────┘          └─────────────────┘
-```
-
 ## Serilog Configuration
 
 ### Basic Setup (Program.cs)
