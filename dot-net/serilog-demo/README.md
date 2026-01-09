@@ -8,10 +8,11 @@ A production-ready ASP.NET Core Web API demonstrating **Serilog** structured log
 - Console output with structured JSON properties
 - Request/response logging with trace context
 - Log correlation with distributed traces
+- **OTLP log export to SigNoz** (via Serilog.Sinks.OpenTelemetry)
 
 🔭 **OpenTelemetry Distributed Tracing**
-- Automatic HTTP instrumentation
-- Custom activity/span creation
+- Automatic HTTP instrumentation (ASP.NET Core + HttpClient)
+- Custom activity/span creation with events
 - Trace context propagation (W3C Trace Context)
 - Dual exporters: Console (local debugging) + OTLP (SigNoz)
 
@@ -89,8 +90,9 @@ dotnet run
 
 You should see:
 ```
+[10:49:53 INF] OTLP log exporter configured for SigNoz region: in
 [10:49:53 INF] OTLP exporter configured for SigNoz region: in
-[10:49:53 INF] Starting serilog-otel-api v1.0.0
+[10:49:53 INF] Starting serilog-demo-api v1.0.0
 [10:49:54 INF] Now listening on: http://localhost:5242
 ```
 
@@ -111,7 +113,7 @@ This script will continuously make requests to all endpoints, generating logs an
 
 1. Go to your [SigNoz Cloud dashboard](https://signoz.io)
 2. Navigate to **Services**
-3. Click on **serilog-otel-api**
+3. Click on **serilog-demo-api**
 4. Explore:
    - **Traces** - See distributed traces with parent-child relationships
    - **Service Map** - Visualize external service calls
