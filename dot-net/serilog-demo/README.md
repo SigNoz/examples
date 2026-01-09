@@ -94,11 +94,17 @@ dotnet run
 
 You should see:
 ```
-[10:49:53 INF] OTLP log exporter configured for SigNoz region: in
-[10:49:53 INF] OTLP exporter configured for SigNoz region: in
 [10:49:53 INF] Starting serilog-demo-api v1.0.0
-[10:49:54 INF] Now listening on: http://localhost:5242
+[10:49:53 INF] OpenTelemetry configured: logs and traces → SigNoz (in)
+[10:49:53 INF] Now listening on: http://localhost:5242
 ```
+
+If SigNoz is not configured, you'll see:
+```
+[10:49:53 WRN] SigNoz not configured. Set SigNoz__Region and SigNoz__IngestionKey environment variables.
+[10:49:53 INF] Logs and traces will only be exported to Console.
+```
+
 
 The API is now running on `http://localhost:5242` (or the port shown in your console).
 
@@ -176,16 +182,32 @@ curl http://localhost:5242/api/error
 
 ## Configuration
 
+This project uses a **hybrid configuration approach** following 12-Factor App principles:
+
+| Configuration Type | Where It Lives | Example |
+|-------------------|----------------|---------|
+| **Static settings** | `appsettings.json` | Log levels, enrichers, console format |
+| **Secrets/Dynamic** | Environment variables | API keys, endpoints |
+
 ### Environment Variables
 
 | Variable | Description | Example |
-|----------|-------------|---------|
-| `SIGNOZ_REGION` | Your SigNoz cloud region | `in`, `us`, `eu` |
-| `SIGNOZ_INGESTION_KEY` | Your SigNoz ingestion key | `abc123...` |
+|----------|-------------|---------:|
+| `SigNoz__Region` | Your SigNoz cloud region | `in`, `us`, `eu` |
+| `SigNoz__IngestionKey` | Your SigNoz ingestion key | `abc123...` |
+| `ServiceInfo__Name` | Service name (optional) | `my-api` |
+| `ServiceInfo__Version` | Service version (optional) | `2.0.0` |
+
+> **Note**: The double underscore (`__`) is .NET's convention for nested configuration paths.
 
 ### appsettings.json
 
-Minimal configuration - most settings are in code for clarity.
+Contains static Serilog configuration:
+- Log levels and overrides
+- Enrichers (FromLogContext, WithSpan, WithMachineName)
+- Console sink with output template
+
+OpenTelemetry sinks (logs + traces) are configured in code to use environment variables for secrets.
 
 ## Project Structure
 
@@ -197,7 +219,10 @@ serilog-demo/
 │   └── ErrorController.cs     # Error handling demo
 ├── Models/
 │   └── DataItem.cs            # Data model
+├── Properties/
+│   └── launchSettings.json    # Local dev environment variables
 ├── Program.cs                 # App configuration (Serilog + OTEL)
+├── appsettings.json           # Static Serilog config
 ├── load-generator.sh          # Traffic generator script
 └── README.md                  # This file
 ```

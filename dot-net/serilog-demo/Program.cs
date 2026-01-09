@@ -7,24 +7,71 @@ using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===== Configure Serilog =====
-// All configuration is in appsettings.json
-// Override with environment variables:
-//   - SigNoz__Region (e.g., "in", "us", "eu")
-//   - SigNoz__IngestionKey (your SigNoz ingestion key)
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
-    .CreateLogger();
+// =============================================================================
+// CONFIGURATION APPROACH (Hybrid - 12-Factor App Pattern)
+// =============================================================================
+// Static config (log levels, enrichers, console sink) → appsettings.json
+// Dynamic config (API keys, endpoints)                → Environment variables
+//
+// Environment variables (use double underscore for nested paths):
+//   - SigNoz__Region        → SigNoz region (in, us, eu)
+//   - SigNoz__IngestionKey  → Your SigNoz ingestion key
+//   - ServiceInfo__Name     → Service name (optional override)
+//   - ServiceInfo__Version  → Service version (optional override)
+// =============================================================================
 
-builder.Host.UseSerilog();
+// Read service info from configuration (can be overridden via env vars)
+var serviceName = builder.Configuration.GetValue<string>("ServiceInfo:Name") ?? "serilog-demo-api";
+var serviceVersion = builder.Configuration.GetValue<string>("ServiceInfo:Version") ?? "1.0.0";
 
-Log.Information("Starting serilog-demo-api v1.0.0");
-
-// Read configuration values
-var serviceName = builder.Configuration.GetValue<string>("Serilog:WriteTo:1:Args:resourceAttributes:service.name") ?? "serilog-demo-api";
-var serviceVersion = builder.Configuration.GetValue<string>("Serilog:WriteTo:1:Args:resourceAttributes:service.version") ?? "1.0.0";
+// Read SigNoz configuration from environment variables
 var signozRegion = builder.Configuration.GetValue<string>("SigNoz:Region");
 var signozIngestionKey = builder.Configuration.GetValue<string>("SigNoz:IngestionKey");
+
+var isValidSigNozRegion = !string.IsNullOrEmpty(signozRegion) && signozRegion != "<your-region>";
+var isValidSigNozIngestionKey = !string.IsNullOrEmpty(signozIngestionKey) && signozIngestionKey != "<your-signoz-ingestion-key>";
+var hasSigNozConfig = isValidSigNozRegion && isValidSigNozIngestionKey;
+
+// =============================================================================
+// SERILOG CONFIGURATION
+// =============================================================================
+// Base config (levels, enrichers, console sink) is loaded from appsettings.json
+// OpenTelemetry sink is added here because it needs dynamic values (secrets)
+// =============================================================================
+
+var loggerConfig = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration);
+
+// Add OpenTelemetry log sink if SigNoz is configured
+if (hasSigNozConfig)
+{
+    var signozLogsEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443/v1/logs";
+    loggerConfig.WriteTo.OpenTelemetry(options =>
+    {
+        options.Endpoint = signozLogsEndpoint;
+        options.Protocol = Serilog.Sinks.OpenTelemetry.OtlpProtocol.Grpc;
+        options.Headers = new Dictionary<string, string>
+        {
+            ["signoz-ingestion-key"] = signozIngestionKey!
+        };
+        options.ResourceAttributes = new Dictionary<string, object>
+        {
+            ["service.name"] = serviceName,
+            ["service.version"] = serviceVersion
+        };
+    });
+}
+
+Log.Logger = loggerConfig.CreateLogger();
+builder.Host.UseSerilog();
+
+Log.Information("Starting {ServiceName} v{ServiceVersion}", serviceName, serviceVersion);
+
+// =============================================================================
+// OPENTELEMETRY TRACING CONFIGURATION
+// =============================================================================
+// Trace exporter also configured here to use the same SigNoz credentials
+// =============================================================================
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(tracerProviderBuilder =>
@@ -46,17 +93,25 @@ builder.Services.AddOpenTelemetry()
             {
                 options.RecordException = true;
             })
-            .AddConsoleExporter(); // Keep console exporter for local debugging
+            .AddConsoleExporter();
 
-        // Add OTLP exporter for SigNoz if both region and key are available
-        var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
-        tracerProviderBuilder.AddOtlpExporter(options =>
+        // Add OTLP exporter for SigNoz if configured
+        if (hasSigNozConfig)
         {
-            options.Endpoint = new Uri(signozEndpoint);
-            options.Protocol = OtlpExportProtocol.Grpc;
-            options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
-        });
-        Log.Information("OTLP trace exporter configured for SigNoz region: {Region}", signozRegion);
+            var signozTracesEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443";
+            tracerProviderBuilder.AddOtlpExporter(options =>
+            {
+                options.Endpoint = new Uri(signozTracesEndpoint);
+                options.Protocol = OtlpExportProtocol.Grpc;
+                options.Headers = $"signoz-ingestion-key={signozIngestionKey}";
+            });
+            Log.Information("OpenTelemetry configured: logs and traces → SigNoz ({Region})", signozRegion);
+        }
+        else
+        {
+            Log.Warning("SigNoz not configured. Set SigNoz__Region and SigNoz__IngestionKey environment variables.");
+            Log.Information("Logs and traces will only be exported to Console.");
+        }
     });
 
 // Add services
