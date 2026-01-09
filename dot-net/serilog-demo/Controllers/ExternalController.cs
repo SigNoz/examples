@@ -9,7 +9,7 @@ public class ExternalController : ControllerBase
 {
     private readonly ILogger<ExternalController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
-    private static readonly ActivitySource ActivitySource = new("serilog-otel-demo-api");
+    private static readonly ActivitySource ActivitySource = new("serilog-demo-api");
 
     public ExternalController(ILogger<ExternalController> logger, IHttpClientFactory httpClientFactory)
     {
@@ -25,11 +25,11 @@ public class ExternalController : ControllerBase
     public async Task<ActionResult> CallExternalService()
     {
         using var activity = ActivitySource.StartActivity("CallExternalService");
-        
+
         var traceId = Activity.Current?.TraceId.ToString();
         var spanId = Activity.Current?.SpanId.ToString();
-        
-        _logger.LogInformation("Starting external API call. TraceId: {TraceId}, SpanId: {SpanId}", 
+
+        _logger.LogInformation("Starting external API call. TraceId: {TraceId}, SpanId: {SpanId}",
             traceId, spanId);
 
         activity?.SetTag("external.service", "httpbin.org");
@@ -38,11 +38,11 @@ public class ExternalController : ControllerBase
         try
         {
             var client = _httpClientFactory.CreateClient();
-            
+
             // The HttpClient instrumentation will automatically propagate trace context
             // via traceparent and tracestate headers (W3C Trace Context)
             _logger.LogInformation("Calling external service: https://httpbin.org/headers");
-            
+
             var response = await client.GetAsync("https://httpbin.org/headers");
             var content = await response.Content.ReadAsStringAsync();
 
@@ -54,7 +54,7 @@ public class ExternalController : ControllerBase
                     { "response.size", content.Length }
                 }));
 
-            _logger.LogInformation("External API call completed. Status: {StatusCode}, TraceId: {TraceId}", 
+            _logger.LogInformation("External API call completed. Status: {StatusCode}, TraceId: {TraceId}",
                 response.StatusCode, traceId);
 
             return Ok(new
@@ -71,9 +71,9 @@ public class ExternalController : ControllerBase
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             activity?.AddEvent(new ActivityEvent("ExternalCallFailed"));
-            
+
             _logger.LogError(ex, "External API call failed. TraceId: {TraceId}", traceId);
-            
+
             return StatusCode(500, new
             {
                 Error = "External service call failed",

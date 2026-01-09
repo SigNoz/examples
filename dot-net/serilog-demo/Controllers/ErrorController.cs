@@ -8,7 +8,7 @@ namespace SerilogOtelApi.Controllers;
 public class ErrorController : ControllerBase
 {
     private readonly ILogger<ErrorController> _logger;
-    private static readonly ActivitySource ActivitySource = new("serilog-otel-demo-api");
+    private static readonly ActivitySource ActivitySource = new("serilog-demo-api");
 
     public ErrorController(ILogger<ErrorController> logger)
     {

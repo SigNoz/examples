@@ -1,4 +1,5 @@
 using Serilog;
+using Serilog.Enrichers.Span;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Exporter;
@@ -10,19 +11,7 @@ Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===== Configure Serilog =====
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .Enrich.WithProperty("MachineName", System.Environment.MachineName)
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-    .CreateLogger();
-
-builder.Host.UseSerilog();
-
-// ===== Configure OpenTelemetry Tracing =====
+// ===== Configure Service Info and SigNoz =====
 var serviceName = "serilog-demo-api";
 var serviceVersion = "1.0.0";
 
@@ -37,9 +26,46 @@ if (string.IsNullOrEmpty(signozRegion))
 if (string.IsNullOrEmpty(signozIngestionKey))
     missingVars.Add("SIGNOZ_INGESTION_KEY");
 
+// ===== Configure Serilog =====
+var serilogConfig = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithSpan()  // Add OpenTelemetry trace context (TraceId, SpanId)
+    .Enrich.WithProperty("MachineName", System.Environment.MachineName)
+    .Enrich.WithProperty("service.name", serviceName)
+    .Enrich.WithProperty("service.version", serviceVersion)
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+
+// Add OpenTelemetry sink if SigNoz is configured
+if (!string.IsNullOrEmpty(signozRegion) && !string.IsNullOrEmpty(signozIngestionKey))
+{
+    var signozEndpoint = $"https://ingest.{signozRegion}.signoz.cloud:443/v1/logs";
+    serilogConfig.WriteTo.OpenTelemetry(options =>
+    {
+        options.Endpoint = signozEndpoint;
+        options.Protocol = Serilog.Sinks.OpenTelemetry.OtlpProtocol.Grpc;
+        options.Headers = new Dictionary<string, string>
+        {
+            ["signoz-ingestion-key"] = signozIngestionKey
+        };
+        options.ResourceAttributes = new Dictionary<string, object>
+        {
+            ["service.name"] = serviceName,
+            ["service.version"] = serviceVersion
+        };
+    });
+    Log.Information("OTLP log exporter configured for SigNoz region: {Region}", signozRegion);
+}
+
+Log.Logger = serilogConfig.CreateLogger();
+
+builder.Host.UseSerilog();
+
 if (missingVars.Count > 0)
 {
-    Log.Warning("Missing SigNoz configuration: {MissingVariables}. Traces will only be exported to console.",
+    Log.Warning("Missing SigNoz configuration: {MissingVariables}. Traces and logs will only be exported to console.",
         string.Join(", ", missingVars));
 }
 

@@ -11,7 +11,7 @@ public class DataController : ControllerBase
     private static readonly List<DataItem> _dataStore = new();
     private static int _nextId = 1;
     private readonly ILogger<DataController> _logger;
-    private static readonly ActivitySource ActivitySource = new("serilog-otel-demo-api");
+    private static readonly ActivitySource ActivitySource = new("serilog-demo-api");
 
     public DataController(ILogger<DataController> logger)
     {
@@ -34,7 +34,7 @@ public class DataController : ControllerBase
 
         var result = _dataStore.ToList();
 
-        activity?.AddEvent(new ActivityEvent("DataRetrievalCompleted", 
+        activity?.AddEvent(new ActivityEvent("DataRetrievalCompleted",
             tags: new ActivityTagsCollection { { "result.count", result.Count } }));
 
         _logger.LogInformation("Retrieved {Count} data items successfully", result.Count);
@@ -73,7 +73,7 @@ public class DataController : ControllerBase
                 { "item.category", newItem.Category }
             }));
 
-        _logger.LogInformation("Created data item with ID: {Id}, Name: {Name}, Category: {Category}", 
+        _logger.LogInformation("Created data item with ID: {Id}, Name: {Name}, Category: {Category}",
             newItem.Id, newItem.Name, newItem.Category);
 
         return CreatedAtAction(nameof(GetData), new { id = newItem.Id }, newItem);

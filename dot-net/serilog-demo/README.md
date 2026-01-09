@@ -90,7 +90,7 @@ dotnet run
 You should see:
 ```
 [10:49:53 INF] OTLP exporter configured for SigNoz region: in
-[10:49:53 INF] Starting serilog-otel-demo-api v1.0.0
+[10:49:53 INF] Starting serilog-otel-api v1.0.0
 [10:49:54 INF] Now listening on: http://localhost:5242
 ```
 
@@ -111,7 +111,7 @@ This script will continuously make requests to all endpoints, generating logs an
 
 1. Go to your [SigNoz Cloud dashboard](https://signoz.io)
 2. Navigate to **Services**
-3. Click on **serilog-otel-demo-api**
+3. Click on **serilog-otel-api**
 4. Explore:
    - **Traces** - See distributed traces with parent-child relationships
    - **Service Map** - Visualize external service calls
