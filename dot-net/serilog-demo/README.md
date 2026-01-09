@@ -51,16 +51,35 @@ git clone https://github.com/SigNoz/signoz-examples.git
 cd signoz-examples/dotnet/serilog-demo
 ```
 
-### Step 2: Set Environment Variables
+### Step 2: Configure SigNoz Credentials
 
-Set your SigNoz configuration:
+You have two options to configure your SigNoz credentials:
+
+#### Option 1: Using .env file (Recommended)
+
+Create a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and add your credentials:
+
+```bash
+SIGNOZ_REGION=in  # Your SigNoz region (in, us, eu, etc.)
+SIGNOZ_INGESTION_KEY=your-actual-key-here
+```
+
+> **Note**: Replace `your-actual-key-here` with your actual SigNoz ingestion key from the prerequisites.
+
+#### Option 2: Using Environment Variables
+
+Alternatively, export environment variables in your shell:
 
 ```bash
 export SIGNOZ_REGION="in"  # Your SigNoz region (in, us, eu, etc.)
 export SIGNOZ_INGESTION_KEY="your-actual-key-here"
 ```
-
-> **Note**: Replace `"your-actual-key-here"` with your actual SigNoz ingestion key from Step 1.
 
 ### Step 3: Run the Application
 
