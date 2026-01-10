@@ -1,5 +1,4 @@
 using Serilog;
-using Serilog.Enrichers.Span;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Exporter;

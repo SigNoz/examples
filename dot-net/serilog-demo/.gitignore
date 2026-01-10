@@ -21,3 +21,6 @@ obj/
 
 ## Environment variables (secrets)
 .env
+
+## SQLite logs
+Logs/app_log.db
