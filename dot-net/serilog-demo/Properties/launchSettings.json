@@ -1,0 +1,16 @@
+﻿{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5242",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "SigNoz__Region": "<your-region>",
+        "SigNoz__IngestionKey": "<your-signoz-ingestion-key>"
+      }
+    }
+  }
+}

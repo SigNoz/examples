@@ -1,0 +1,26 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+*.log
+
+## Visual Studio
+.vs/
+*.userprefs
+
+## Rider
+.idea/
+
+## macOS
+.DS_Store
+
+## Environment variables (secrets)
+.env
+
+## SQLite logs
+Logs/app_log.db
