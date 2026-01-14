@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace SerilogOtelApi.Controllers;
 
@@ -54,8 +55,36 @@ public class ExternalController : ControllerBase
                     { "response.size", content.Length }
                 }));
 
-            _logger.LogInformation("External API call completed. Status: {StatusCode}, TraceId: {TraceId}",
-                response.StatusCode, traceId);
+            // Parse the response to extract and verify trace propagation headers
+            string? traceparentHeader = null;
+            bool propagationVerified = false;
+
+            try
+            {
+                var jsonResponse = JsonDocument.Parse(content);
+                var headers = jsonResponse.RootElement.GetProperty("headers");
+
+                if (headers.TryGetProperty("Traceparent", out var traceparentElement))
+                {
+                    traceparentHeader = traceparentElement.GetString();
+                    _logger.LogInformation("External API Call Response Traceparent header: {Traceparent}", traceparentHeader);
+
+                    // Verify that the TraceId in the traceparent header matches our current trace
+                    // traceparent format: 00-<trace-id>-<span-id>-<flags>
+                    if (traceparentHeader != null && traceparentHeader.Contains(traceId?.Replace("-", "") ?? ""))
+                    {
+                        propagationVerified = true;
+                        _logger.LogInformation("Trace context propagation verified! TraceId matches in traceparent header");
+                    }
+                }
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogWarning(jsonEx, "Failed to parse httpbin response for trace verification");
+            }
+
+            _logger.LogInformation("External API call completed. Status: {StatusCode}, TraceId: {TraceId}, Propagation: {Verified}",
+                response.StatusCode, traceId, propagationVerified ? "VERIFIED" : "NOT DETECTED");
 
             return Ok(new
             {
@@ -63,8 +92,12 @@ public class ExternalController : ControllerBase
                 TraceId = traceId,
                 SpanId = spanId,
                 StatusCode = response.StatusCode,
-                Note = "Check the response - it should contain traceparent header showing trace propagation",
-                Response = content
+                TracePropagation = new
+                {
+                    Verified = propagationVerified,
+                    TraceparentHeader = traceparentHeader ?? "NOT FOUND",
+                    FullResponse = content
+                }
             });
         }
         catch (Exception ex)
@@ -83,3 +116,4 @@ public class ExternalController : ControllerBase
         }
     }
 }
+
