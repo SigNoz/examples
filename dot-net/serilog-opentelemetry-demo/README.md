@@ -49,7 +49,7 @@ A production-ready ASP.NET Core Web API demonstrating **Serilog** structured log
 
 ```bash
 git clone https://github.com/SigNoz/signoz-examples.git
-cd signoz-examples/dotnet/serilog-demo
+cd signoz-examples/dotnet/serilog-opentelemetry-demo
 ```
 
 

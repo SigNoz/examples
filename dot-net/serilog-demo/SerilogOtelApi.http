@@ -1,6 +1,0 @@
-@SerilogOtelApi_HostAddress = http://localhost:5242
-
-GET {{SerilogOtelApi_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
