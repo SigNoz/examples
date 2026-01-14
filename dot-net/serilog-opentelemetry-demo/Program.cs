@@ -135,14 +135,6 @@ app.UseSerilogRequestLogging(options =>
     {
         diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress);
         diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
-
-        // Add trace context to logs
-        var activity = Activity.Current;
-        if (activity != null)
-        {
-            diagnosticContext.Set("TraceId", activity.TraceId.ToString());
-            diagnosticContext.Set("SpanId", activity.SpanId.ToString());
-        }
     };
 });
 
