@@ -30,3 +30,11 @@ GET {{SerilogOtelApi_HostAddress}}/api/external
 Accept: application/json
 
 ###
+
+### Trigger Error - Demonstrates error handling, tracing, and LogContext usage
+# This endpoint intentionally throws an exception and showcases Serilog LogContext
+# for enriching all logs within a scope with contextual properties (UserId, RequestId, OperationType)
+GET {{SerilogOtelApi_HostAddress}}/api/error
+Accept: application/json
+
+###
