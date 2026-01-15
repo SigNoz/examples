@@ -108,7 +108,7 @@ builder.Services.AddOpenTelemetry()
         }
         else
         {
-            Log.Warning("SigNoz not configured. Set SigNoz__Region and SigNoz__IngestionKey environment variables.");
+            Log.Warning("SigNoz not configured. Set SigNoz__Region and SigNoz__IngestionKey environment variables in the launchSettings.json file.");
             Log.Information("Logs and traces will only be exported to Console.");
         }
     });
