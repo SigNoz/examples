@@ -1,0 +1,40 @@
+@SerilogOtelApi_HostAddress = http://localhost:5242
+
+### Health Check - Simple endpoint to verify API is running
+GET {{SerilogOtelApi_HostAddress}}/health
+Accept: application/json
+
+###
+
+### Get All Data Items - Demonstrates structured logging and tracing
+GET {{SerilogOtelApi_HostAddress}}/api/data
+Accept: application/json
+
+###
+
+### Create Data Item - Demonstrates structured logging with request destructuring
+POST {{SerilogOtelApi_HostAddress}}/api/data
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Test Item",
+  "category": "Demo"
+}
+
+###
+
+### External Service Call - Demonstrates W3C Trace Context propagation
+# This endpoint calls httpbin.org and shows how trace context is propagated
+GET {{SerilogOtelApi_HostAddress}}/api/external
+Accept: application/json
+
+###
+
+### Trigger Error - Demonstrates error handling, tracing, and LogContext usage
+# This endpoint intentionally throws an exception and showcases Serilog LogContext
+# for enriching all logs within a scope with contextual properties (UserId, RequestId, OperationType)
+GET {{SerilogOtelApi_HostAddress}}/api/error
+Accept: application/json
+
+###
