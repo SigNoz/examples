@@ -89,7 +89,7 @@ Auto-instrumentation handles HTTP requests. Manual spans are used for DB queries
 
 ### Gunicorn Configuration
 
-The `gunicorn_config.py` includes a `post_fork` hook that reinitializes OpenTelemetry in each worker. Without this, spans from worker processes won't export correctly.
+The `gunicorn_config.py` includes a `post_fork` hook that creates a fresh TracerProvider in each worker process. This is necessary because the OTel SDK's background threads (BatchSpanProcessor, etc.) don't survive `fork()`. Without this, spans from worker processes won't export.
 
 ### Worker Count
 
@@ -124,7 +124,7 @@ CMD ["opentelemetry-instrument", "gunicorn", "app:app", "-c", "gunicorn_config.p
 
 ### Missing Spans with Multiple Workers
 
-If spans are missing with Gunicorn workers, it's because the OpenTelemetry SDK from the parent process isn't inherited after forking. The `post_fork` hook in `gunicorn_config.py` fixes this - it's already set up.
+If spans are missing with Gunicorn workers, it's because the OpenTelemetry SDK's background threads (BatchSpanProcessor) don't survive `fork()`. The `post_fork` hook in `gunicorn_config.py` creates a fresh TracerProvider in each worker - it's already set up.
 
 ### Spans Not Appearing in SigNoz
 
