@@ -101,14 +101,39 @@
             background: #f8f9fa;
             border-radius: 12px;
             padding: 20px;
-            transition: transform 0.3s, box-shadow 0.3s;
+            transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
             border: 2px solid transparent;
+            cursor: pointer;
+            position: relative;
         }
 
         .item-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             border-color: #667eea;
+        }
+
+        .item-card.selected {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+            box-shadow: 0 10px 25px rgba(76, 175, 80, 0.3);
+        }
+
+        .item-card.selected::before {
+            content: '✓';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #4CAF50;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
         }
 
         .item-name {
@@ -151,86 +176,139 @@
             font-weight: 600;
         }
 
-        /* Refresh Button */
-        .refresh-container {
+        /* Purchase Button */
+        .purchase-container {
             text-align: center;
             margin-top: 30px;
-        }
-
-        .purchase-section {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-        }
-
-        .purchase-section h3 {
-            margin-bottom: 15px;
-            color: #333;
-        }
-
-        .select-item {
-            width: 100%;
-            padding: 12px;
-            font-size: 1.1em;
-            border: 2px solid #667eea;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            background: white;
-            cursor: pointer;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
         }
 
         .purchase-btn {
             background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
             color: white;
             border: none;
-            padding: 15px 40px;
-            font-size: 1.2em;
+            padding: 18px 50px;
+            font-size: 1.3em;
             border-radius: 50px;
             cursor: pointer;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
             transition: transform 0.2s, box-shadow 0.2s;
             font-weight: 600;
-            width: 100%;
+            display: inline-block;
         }
 
-        .purchase-btn:hover {
+        .purchase-btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
         }
 
-        .purchase-btn:active {
+        .purchase-btn:active:not(:disabled) {
             transform: translateY(0);
         }
 
         .purchase-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
-            transform: none;
+            box-shadow: none;
         }
 
-        .success-message {
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            text-align: center;
-            animation: slideIn 0.5s ease-out;
+        .selection-hint {
+            color: #666;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        /* Success Modal */
+        .modal {
             display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
         }
 
-        .success-message.show {
-            display: block;
+        .modal-content {
+            background: white;
+            margin: 15% auto;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            text-align: center;
+            animation: slideDown 0.3s;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
 
-        .success-message h2 {
-            margin-bottom: 10px;
-            font-size: 1.8em;
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
         }
 
-        .success-message p {
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 2em;
+            color: #4CAF50;
+            margin-bottom: 15px;
+        }
+
+        .modal-message {
             font-size: 1.2em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .modal-savings {
+            font-size: 1.5em;
+            color: #f5576c;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .modal-close {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .modal-close:hover {
+            transform: scale(1.05);
+        }
+
+        /* Refresh Button */
+        .refresh-container {
+            text-align: center;
+            margin-top: 30px;
         }
 
         .refresh-btn {
@@ -289,37 +367,15 @@
         </div>
         {% endif %}
 
-        <!-- Success Message (hidden by default) -->
-        <div id="successMessage" class="success-message">
-            <h2>🎉 Purchase Completed!</h2>
-            <p id="savingsText"></p>
-        </div>
-
         <!-- Items Container -->
         <div class="items-container">
             <h2 class="items-header">Available Items</h2>
 
-            <!-- Purchase Section -->
-            <div class="purchase-section">
-                <h3>Select an item to purchase:</h3>
-                <select id="itemSelect" class="select-item">
-                    <option value="">-- Choose an item --</option>
-                    {% for item in items %}
-                    <option value="{{ loop.index0 }}" data-name="{{ item.name }}"
-                        data-original="{{ item.original_price }}" data-discounted="{{ item.discounted_price }}"
-                        data-has-discount="{{ item.has_discount }}">
-                        {{ item.name }} - ${{ "%.2f"|format(item.discounted_price if item.has_discount else
-                        item.original_price) }}
-                        {% if item.has_discount %}({{ discount_pct }}% off!){% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-                <button id="purchaseBtn" class="purchase-btn" disabled>Make Purchase</button>
-            </div>
-
             <div class="items-grid">
                 {% for item in items %}
-                <div class="item-card">
+                <div class="item-card" data-id="{{ item.id }}" data-name="{{ item.name }}" data-original="{{ "
+                    %.2f"|format(item.original_price) }}" data-discounted="{{ " %.2f"|format(item.discounted_price) }}"
+                    data-has-discount="{{ item.has_discount|lower }}" onclick="selectItem(this)">
                     <div class="item-name">{{ item.name }}</div>
                     <div class="price-container">
                         {% if item.has_discount %}
@@ -334,6 +390,13 @@
                 {% endfor %}
             </div>
 
+            <div class="purchase-container">
+                <button class="purchase-btn" id="purchaseBtn" onclick="makePurchase()" disabled>
+                    💳 Purchase Selected Item
+                </button>
+                <div class="selection-hint">Click on an item to select it</div>
+            </div>
+
             <div class="refresh-container">
                 <button class="refresh-btn" onclick="window.location.reload()">
                     🔄 Try Again for a Discount!
@@ -341,7 +404,18 @@
             </div>
         </div>
 
-        <!--Footer with Baggage Info -->
+        <!-- Success Modal -->
+        <div id="successModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-icon">🎉</div>
+                <h2 class="modal-title">Purchase Complete!</h2>
+                <p class="modal-message" id="modalMessage"></p>
+                <p class="modal-savings" id="modalSavings"></p>
+                <button class="modal-close" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+
+        <!-- Footer with Baggage Info -->
         <div class="footer">
             <p><strong>How it works:</strong> Each visit randomly sets baggage for discount eligibility!</p>
             <div class="baggage-info">
@@ -357,45 +431,56 @@
     </div>
 
     <script>
-        // JavaScript for purchase functionality
-        const itemSelect = document.getElementById('itemSelect');
-        const purchaseBtn = document.getElementById('purchaseBtn');
-        const successMessage = document.getElementById('successMessage');
-        const savingsText = document.getElementById('savingsText');
+        let selectedItem = null;
 
-        // Enable purchase button when item is selected
-        itemSelect.addEventListener('change', function () {
-            purchaseBtn.disabled = !this.value;
-        });
+        function selectItem(card) {
+            // Remove selection from all cards
+            document.querySelectorAll('.item-card').forEach(c => c.classList.remove('selected'));
 
-        // Handle purchase
-        purchaseBtn.addEventListener('click', function () {
-            const selectedOption = itemSelect.options[itemSelect.selectedIndex];
-            const itemName = selectedOption.dataset.name;
-            const originalPrice = parseFloat(selectedOption.dataset.original);
-            const discountedPrice = parseFloat(selectedOption.dataset.discounted);
-            const hasDiscount = selectedOption.dataset.hasDiscount === 'True';
+            // Select this card
+            card.classList.add('selected');
+            selectedItem = {
+                id: card.dataset.id,
+                name: card.dataset.name,
+                originalPrice: parseFloat(card.dataset.original),
+                discountedPrice: parseFloat(card.dataset.discounted),
+                hasDiscount: card.dataset.hasDiscount === 'true'
+            };
 
-            // Calculate savings
-            const savings = originalPrice - discountedPrice;
-            const paidAmount = hasDiscount ? discountedPrice : originalPrice;
+            // Enable purchase button
+            document.getElementById('purchaseBtn').disabled = false;
+        }
 
-            // Show success message
-            if (hasDiscount && savings > 0) {
-                savingsText.innerHTML = `You purchased <strong>${itemName}</strong> for <strong>$${paidAmount.toFixed(2)}</strong>!<br>You saved <strong>$${savings.toFixed(2)}</strong> with your discount! 💰`;
+        function makePurchase() {
+            if (!selectedItem) return;
+
+            const savings = selectedItem.originalPrice - selectedItem.discountedPrice;
+            const modal = document.getElementById('successModal');
+            const messageEl = document.getElementById('modalMessage');
+            const savingsEl = document.getElementById('modalSavings');
+
+            messageEl.textContent = `You purchased: ${selectedItem.name}`;
+
+            if (selectedItem.hasDiscount && savings > 0) {
+                savingsEl.innerHTML = `You saved <strong>$${savings.toFixed(2)}</strong>! 🎊`;
             } else {
-                savingsText.innerHTML = `You purchased <strong>${itemName}</strong> for <strong>$${paidAmount.toFixed(2)}</strong>!<br>Thanks for your order! 📦`;
+                savingsEl.textContent = `Total paid: $${selectedItem.originalPrice.toFixed(2)}`;
             }
 
-            successMessage.classList.add('show');
+            modal.style.display = 'block';
+        }
 
-            // Scroll to success message
-            successMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        function closeModal() {
+            document.getElementById('successModal').style.display = 'none';
+        }
 
-            // Reset form
-            itemSelect.value = '';
-            purchaseBtn.disabled = true;
-        });
+        // Close modal when clicking outside
+        window.onclick = function (event) {
+            const modal = document.getElementById('successModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
     </script>
 </body>
 
