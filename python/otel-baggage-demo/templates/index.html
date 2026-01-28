@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baggage Demo Shop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        /* Discount Banner */
+        .discount-banner {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        .discount-banner h2 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+        
+        .discount-banner p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Items Grid */
+        .items-container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .items-header {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 25px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .item-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .item-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+        
+        .item-name {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .price-container {
+            font-size: 1.3em;
+        }
+        
+        .original-price {
+            color: #999;
+            text-decoration: line-through;
+            font-size: 0.9em;
+            margin-right: 8px;
+        }
+        
+        .discounted-price {
+            color: #f5576c;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .regular-price {
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .discount-badge {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+        
+        /* Refresh Button */
+        .refresh-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.8;
+        }
+        
+        .baggage-info {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛍️ OpenTelemetry Baggage Demo</h1>
+            <p>Refresh to Try Your Luck!</p>
+        </div>
+        
+        <!-- Discount Banner (if eligible) -->
+        {% if discount_eligible %}
+        <div class="discount-banner">
+            <h2>🎉 You're a Lucky Shopper!</h2>
+            <p>You got {{ discount_pct }}% off on all items!</p>
+        </div>
+        {% endif %}
+        
+        <!-- Items Container -->
+        <div class="items-container">
+            <h2 class="items-header">Available Items</h2>
+            
+            <div class="items-grid">
+                {% for item in items %}
+                <div class="item-card">
+                    <div class="item-name">{{ item.name }}</div>
+                    <div class="price-container">
+                        {% if item.has_discount %}
+                            <span class="original-price">${{ "%.2f"|format(item.original_price) }}</span>
+                            <span class="discounted-price">${{ "%.2f"|format(item.discounted_price) }}</span>
+                            <div class="discount-badge">SAVE {{ discount_pct }}%</div>
+                        {% else %}
+                            <span class="regular-price">${{ "%.2f"|format(item.original_price) }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="refresh-container">
+                <button class="refresh-btn" onclick="window.location.reload()">
+                    🔄 Try Again for a Discount!
+                </button>
+            </div>
+        </div>
+        
+        <!-- Footer with Baggage Info -->
+        <div class="footer">
+            <p><strong>How it works:</strong> Each visit randomly sets baggage for discount eligibility!</p>
+            <div class="baggage-info">
+                <strong>Baggage Propagation:</strong><br>
+                Frontend → Backend → Processor<br>
+                {% if discount_eligible %}
+                ✅ discount_eligible=true, discount_pct={{ discount_pct }}
+                {% else %}
+                ❌ discount_eligible=false
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

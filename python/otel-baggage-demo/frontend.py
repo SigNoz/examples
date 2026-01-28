@@ -1,14 +1,17 @@
-# frontend for the app
+"""
+Frontend Service - Web UI for the baggage demo
+Port: 8888
+
+Serves HTML page, randomly sets discount_eligible baggage,
+and displays items with discounts.
+"""
 
 import logging
-import requests
 import random
-
 import requests
-from flask import Flask, request, jsonify
-from opentelemetry.baggage import set_baggage, get_baggage
-from opentelemetry.context import attach, detach
-
+from flask import Flask, render_template, jsonify
+from opentelemetry.baggage import set_baggage
+from opentelemetry import context
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,51 +19,63 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# List of backend service URLs
-BACKEND_SERVICES = [
-    "http://localhost:8889",
-    "http://localhost:8890"
-]
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Health check endpoint"""
+    return jsonify({"status": "healthy", "service": "frontend"})
 
 
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({"status": "ok"})
-
-@app.route("/external", methods=["GET"])
-def external():
-    int = random.randrange(1, 10)
-    ctx = set_baggage("user", "dhruv")
-    ctx = set_baggage("tenant", "acme", ctx)
-    ctx = set_baggage("int", int, ctx)
-
-    token = attach(ctx)
-
-    target_url = random.choice(BACKEND_SERVICES)
-    target_url = BACKEND_SERVICES[0]
-
-    resp = requests.get(f"{target_url}")
-    print(resp.text)
-    print()
-    print(resp.headers)
-    print()
-    print(resp.request.headers)
-    return jsonify({"status": "ok"})
-
-
-
-
-@app.route('/api/recommendations', methods=['GET'])
-def get_recommendations():
-    # Simple round-robin or random selection
-    target_url = random.choice(BACKEND_SERVICES)
+    """
+    Main page - serves HTML UI
     
-    # Forward the request to the backend
+    Workflow:
+    1. Randomly decide if user gets discount (50% chance)
+    2. Set discount_eligible baggage
+    3. Call backend to fetch items
+    4. Render HTML template with results
+    """
+    # Randomly decide if user is eligible for discount
+    discount_eligible = random.choice([True, False])
+    
+    logger.info(f"New visitor - discount_eligible: {discount_eligible}")
+    
+    # Set baggage
+    ctx = set_baggage("discount_eligible", str(discount_eligible).lower())
+    token = context.attach(ctx)
+    
     try:
-        response = requests.get(f"{target_url}/recommendations", headers=dict(request.headers))
-        return jsonify(response.json()), response.status_code
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Call backend to get items (baggage auto-propagates)
+        response = requests.get("http://localhost:8889/", timeout=5)
+        data = response.json()
+        
+        items = data.get("items", [])
+        discount_pct = data.get("discount_pct")
+        
+        logger.info(f"Rendering page with {len(items)} items, discount: {discount_pct}%")
+        
+        # Render template
+        return render_template(
+            'index.html',
+            items=items,
+            discount_eligible=discount_eligible,
+            discount_pct=discount_pct
+        )
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling backend: {e}")
+        return render_template(
+            'error.html',
+            error="Backend service unavailable. Please ensure all services are running."
+        ), 503
+    
+    finally:
+        # Detach context
+        context.detach(token)
+
 
 if __name__ == '__main__':
-    app.run(port=8888, debug=False)
+    logger.info("Starting Frontend Service on port 8888")
+    app.run(host='0.0.0.0', port=8888, debug=False)
