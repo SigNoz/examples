@@ -8,13 +8,19 @@ adds it to baggage, and calls processor.
 
 import logging
 import random
+import sys
 import requests
 from flask import Flask, request, jsonify
 from opentelemetry.baggage import get_baggage, set_baggage
 from opentelemetry import context
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to explicitly use stderr for use with honcho process manager
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s:%(name)s:%(message)s',
+    stream=sys.stderr,
+    force=True
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)

@@ -32,27 +32,24 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Start Services (3 terminals)
+### 2. Start All Services (Single Command!)
 
-**Terminal 1 - Processor:**
 ```bash
 source venv/bin/activate
-export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-OTEL_SERVICE_NAME=processor opentelemetry-instrument python processor.py
+honcho start
 ```
 
-**Terminal 2 - Backend:**
-```bash
-source venv/bin/activate
-export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-OTEL_SERVICE_NAME=backend opentelemetry-instrument python backend.py
-```
+That's it! Honcho will:
+- ✅ Start all 3 services automatically
+- ✅ Show color-coded logs for each service
+- ✅ Auto-load environment variables from `.env`
+- ✅ Stop all services when you press Ctrl+C
 
-**Terminal 3 - Frontend:**
-```bash
-source venv/bin/activate
-export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-OTEL_SERVICE_NAME=frontend opentelemetry-instrument python frontend.py
+You'll see output like:
+```
+[processor] INFO:__main__:Starting Processor Service on port 8890
+[backend]   INFO:__main__:Starting Backend Service on port 8889
+[frontend]  INFO:__main__:Starting Frontend Service on port 8888
 ```
 
 ### 3. Visit the Demo
@@ -62,6 +59,31 @@ Open your browser: **http://localhost:8888**
 Refresh the page multiple times to see:
 - 🎉 **Sometimes**: "You're a Lucky Shopper! You got 15% off!"
 - ❌ **Sometimes**: No discount (regular prices)
+
+### 4. Stop All Services
+
+Press **Ctrl+C** in the terminal running honcho - it will gracefully stop all services.
+
+---
+
+## Alternative: Run Services Individually
+
+If you prefer to run services in separate terminals:
+
+**Terminal 1:**
+```bash
+source venv/bin/activate && OTEL_SERVICE_NAME=processor PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python processor.py
+```
+
+**Terminal 2:**
+```bash
+source venv/bin/activate && OTEL_SERVICE_NAME=backend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python backend.py
+```
+
+**Terminal 3:**
+```bash
+source venv/bin/activate && OTEL_SERVICE_NAME=frontend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python frontend.py
+```
 
 ## 📦 Baggage Flow
 
@@ -109,8 +131,10 @@ This fixes the protobuf compatibility issue.
 ```
 otel-baggage-demo/
 ├── frontend.py           # Port 8888 - HTML UI
-├── backend.py        # Port 8889 - Middleware
+├── backend.py            # Port 8889 - Middleware
 ├── processor.py          # Port 8890 - Pricing logic
+├── Procfile              # Process manager configuration
+├── .env                  # Environment variables
 ├── templates/
 │   └── index.html       # Elegant HTML template
 └── requirements.txt

@@ -7,11 +7,17 @@ Returns both original and discounted prices.
 """
 
 import logging
+import sys
 from flask import Flask, request, jsonify
 from opentelemetry.baggage import get_baggage, get_all
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to explicitly use stderr for use with honcho process manager
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s:%(name)s:%(message)s',
+    stream=sys.stderr,
+    force=True
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
