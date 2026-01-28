@@ -14,14 +14,14 @@ from flask import Flask, request, jsonify
 from opentelemetry.baggage import get_baggage, set_baggage
 from opentelemetry import context
 
-# Configure logging to explicitly use stderr for use with honcho process manager
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s:%(name)s:%(message)s',
-    stream=sys.stderr,
-    force=True
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Add console handler for local output (stderr for honcho compatibility)
+console_handler = logging.StreamHandler(sys.stderr)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(levelname)s:%(name)s:%(message)s'))
+logger.addHandler(console_handler)
 
 app = Flask(__name__)
 
