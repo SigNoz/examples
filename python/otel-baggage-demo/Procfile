@@ -5,6 +5,6 @@
 # <process_name>: <command>
 # -u flag makes Python unbuffered so logs appear immediately
 
-processor: OTEL_SERVICE_NAME=processor PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u processor.py
-backend: OTEL_SERVICE_NAME=backend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u backend.py
-frontend: OTEL_SERVICE_NAME=frontend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u frontend.py
+processor: OTEL_SERVICE_NAME=baggage-processor PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u processor.py
+backend: OTEL_SERVICE_NAME=baggage-backend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u backend.py
+frontend: OTEL_SERVICE_NAME=baggage-frontend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python -u frontend.py
