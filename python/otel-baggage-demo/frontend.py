@@ -12,7 +12,7 @@ import sys
 import requests
 from flask import Flask, render_template, jsonify
 from opentelemetry.baggage import set_baggage
-from opentelemetry import context
+from opentelemetry import context, trace
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -48,7 +48,7 @@ def index():
     
     logger.info(f"New visitor - discount_eligible: {discount_eligible}")
     
-    # Set baggage
+    # Set baggage; key-value pairs should be strings
     ctx = set_baggage("discount_eligible", str(discount_eligible).lower())
     token = context.attach(ctx)
     
@@ -61,6 +61,11 @@ def index():
         discount_pct = data.get("discount_pct")
         if discount_pct is None:
             discount_pct = 0
+
+        # set baggage attributes for tracing for analysis with observability backend like SigNoz
+        span = trace.get_current_span()
+        span.set_attribute("discount_eligible", discount_eligible)
+        span.set_attribute("discount_pct", discount_pct)
         
         logger.info(f"Rendering page with {len(items)} items, discount: {discount_pct}%")
         

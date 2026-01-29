@@ -53,6 +53,7 @@ def get_items():
     logger.info(f"Pricing received request - discount_eligible: {discount_eligible}")
     
     # If user is eligible, calculate discount percentage
+    # since values are strings, check accordingly
     discount_pct = None
     if discount_eligible == "true":
         discount_pct = random.choice(DISCOUNT_OPTIONS)
