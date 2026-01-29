@@ -420,7 +420,7 @@
             <p><strong>How it works:</strong> Each visit randomly sets baggage for discount eligibility!</p>
             <div class="baggage-info">
                 <strong>Baggage Propagation:</strong><br>
-                Frontend → Backend → Processor<br>
+                Frontend → Pricing → Processor<br>
                 {% if discount_eligible %}
                 ✅ discount_eligible=true, discount_pct={{ discount_pct }}
                 {% else %}

@@ -40,7 +40,7 @@ def index():
     Workflow:
     1. Randomly decide if user gets discount (50% chance)
     2. Set discount_eligible baggage
-    3. Call backend to fetch items
+    3. Call pricing to fetch items
     4. Render HTML template with results
     """
     # Randomly decide if user is eligible for discount
@@ -53,12 +53,14 @@ def index():
     token = context.attach(ctx)
     
     try:
-        # Call backend to get items (baggage auto-propagates)
+        # Call pricing to get items (baggage auto-propagates)
         response = requests.get("http://localhost:8889/", timeout=5)
         data = response.json()
         
         items = data.get("items", [])
         discount_pct = data.get("discount_pct")
+        if discount_pct is None:
+            discount_pct = 0
         
         logger.info(f"Rendering page with {len(items)} items, discount: {discount_pct}%")
         
@@ -71,10 +73,10 @@ def index():
         )
         
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error calling backend: {e}")
+        logger.error(f"Error calling pricing: {e}")
         return render_template(
             'error.html',
-            error="Backend service unavailable. Please ensure all services are running."
+            error="Pricing service unavailable. Please ensure all services are running."
         ), 503
     
     finally:

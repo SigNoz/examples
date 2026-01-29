@@ -16,7 +16,7 @@ Browser
    ↓
 Frontend (8888) → Sets discount_eligible baggage randomly
    ↓
-Backend (8889) → Calculates discount %, adds to baggage
+Pricing (8889) → Calculates discount %, adds to baggage
    ↓
 Processor (8890) → Reads baggage, applies discount to prices
 ```
@@ -48,7 +48,7 @@ That's it! Honcho will:
 You'll see output like:
 ```
 [processor] INFO:__main__:Starting Processor Service on port 8890
-[backend]   INFO:__main__:Starting Backend Service on port 8889
+[pricing]   INFO:__main__:Starting Pricing Service on port 8889
 [frontend]  INFO:__main__:Starting Frontend Service on port 8888
 ```
 
@@ -77,7 +77,7 @@ source venv/bin/activate && OTEL_SERVICE_NAME=processor PROTOCOL_BUFFERS_PYTHON_
 
 **Terminal 2:**
 ```bash
-source venv/bin/activate && OTEL_SERVICE_NAME=backend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python backend.py
+source venv/bin/activate && OTEL_SERVICE_NAME=pricing PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python pricing.py
 ```
 
 **Terminal 3:**
@@ -90,7 +90,7 @@ source venv/bin/activate && OTEL_SERVICE_NAME=frontend PROTOCOL_BUFFERS_PYTHON_I
 | Service | Baggage Action | Key | Value | Purpose |
 |---------|---------------|-----|-------|---------|
 | **Frontend** | Sets | `discount_eligible` | `true`/`false` | Random 50% chance |
-| **Backend** | Adds | `discount_pct` | `10`/`15`/`20`/`25` | Calculated discount |
+| **Pricing** | Adds | `discount_pct` | `10`/`15`/`20`/`25` | Calculated discount |
 | **Processor** | Reads | Both | - | Applies discount to prices |
 
 ## 🎨 UI Features
@@ -112,7 +112,7 @@ source venv/bin/activate && OTEL_SERVICE_NAME=frontend PROTOCOL_BUFFERS_PYTHON_I
 ## 📝 Key Learning Points
 
 ✅ **Setting Baggage** - Frontend sets initial context  
-✅ **Adding to Baggage** - Backend enriches context  
+✅ **Adding to Baggage** - Pricing enriches context  
 ✅ **Reading Baggage** - Processor acts on context  
 ✅ **Auto-Propagation** - No manual header management  
 ✅ **Business Impact** - Pricing changes based on baggage
@@ -131,7 +131,7 @@ This fixes the protobuf compatibility issue.
 ```
 otel-baggage-demo/
 ├── frontend.py           # Port 8888 - HTML UI
-├── backend.py            # Port 8889 - Middleware
+├── pricing.py            # Port 8889 - Middleware
 ├── processor.py          # Port 8890 - Pricing logic
 ├── Procfile              # Process manager configuration
 ├── .env                  # Environment variables
@@ -144,10 +144,10 @@ otel-baggage-demo/
 
 1. User visits `http://localhost:8888`
 2. Frontend randomly sets `discount_eligible=true/false` baggage
-3. Frontend calls Backend
-4. Backend reads baggage, calculates discount % if eligible
-5. Backend adds `discount_pct` to baggage
-6. Backend calls Processor
+3. Frontend calls Pricing
+4. Pricing reads baggage, calculates discount % if eligible
+5. Pricing adds `discount_pct` to baggage
+6. Pricing calls Processor
 7. Processor reads both baggage values, applies discount
 8. Processor returns items with original + discounted prices
 9. Response flows back to Frontend

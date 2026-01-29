@@ -1,5 +1,5 @@
 """
-Backend Service - Middleware that calculates discount percentage
+Pricing Service - Middleware that calculates discount percentage
 Port: 8889
 
 Reads discount_eligible from baggage, calculates discount %, 
@@ -32,7 +32,7 @@ DISCOUNT_OPTIONS = [10, 15, 20, 25]
 @app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "service": "backend"})
+    return jsonify({"status": "healthy", "service": "pricing"})
 
 
 @app.route("/", methods=["GET"])
@@ -50,7 +50,7 @@ def get_items():
     # Read baggage set by frontend
     discount_eligible = get_baggage("discount_eligible")
     
-    logger.info(f"Backend received request - discount_eligible: {discount_eligible}")
+    logger.info(f"Pricing received request - discount_eligible: {discount_eligible}")
     
     # If user is eligible, calculate discount percentage
     discount_pct = None
@@ -93,5 +93,5 @@ def get_items():
 
 
 if __name__ == '__main__':
-    logger.info("Starting Backend Service on port 8889")
+    logger.info("Starting Pricing Service on port 8889")
     app.run(host='0.0.0.0', port=8889, debug=False)
