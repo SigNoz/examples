@@ -60,29 +60,49 @@ Refresh the page multiple times to see:
 - 🎉 **Sometimes**: "You're a Lucky Shopper! You got 15% off!"
 - ❌ **Sometimes**: No discount (regular prices)
 
+Visit `http://localhost:8888` and refresh to see different discounts!
+
 ### 4. Stop All Services
 
-Press **Ctrl+C** in the terminal running honcho - it will gracefully stop all services.
+Press `Ctrl+C` to stop all services.
 
 ---
 
-## Alternative: Run Services Individually
+### Alternative: Running Services Individually
 
-If you prefer to run services in separate terminals:
+If you need to run services in separate terminals (useful for debugging):
+
+**First, set environment variables in each terminal:**
+
+```bash
+# Python 3.14 compatibility
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+
+# Enable logging auto-instrumentation
+export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+
+# Export to SigNoz - configure with your credentials
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.<region>.signoz.cloud:443
+export OTEL_EXPORTER_OTLP_HEADERS="signoz-ingestion-key=YOUR_KEY_HERE"
+export OTEL_TRACES_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+```
+
+**Then run each service in a separate terminal:**
 
 **Terminal 1:**
 ```bash
-source venv/bin/activate && OTEL_SERVICE_NAME=processor PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python processor.py
+OTEL_SERVICE_NAME=baggage-processor opentelemetry-instrument python -u processor.py
 ```
 
 **Terminal 2:**
 ```bash
-source venv/bin/activate && OTEL_SERVICE_NAME=pricing PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python pricing.py
+OTEL_SERVICE_NAME=baggage-pricing opentelemetry-instrument python -u pricing.py
 ```
 
 **Terminal 3:**
 ```bash
-source venv/bin/activate && OTEL_SERVICE_NAME=frontend PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python opentelemetry-instrument python frontend.py
+OTEL_SERVICE_NAME=baggage-frontend opentelemetry-instrument python -u frontend.py
 ```
 
 ## 📦 Baggage Flow
@@ -126,18 +146,21 @@ export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 This fixes the protobuf compatibility issue.
 
-## 📂 Project Structure
+## 📁 Project Structure
 
 ```
 otel-baggage-demo/
 ├── frontend.py           # Port 8888 - HTML UI
 ├── pricing.py            # Port 8889 - Middleware
 ├── processor.py          # Port 8890 - Pricing logic
+├── run.sh                # Helper script to load .env
 ├── Procfile              # Process manager configuration
 ├── .env                  # Environment variables
-├── templates/
-│   └── index.html       # Elegant HTML template
-└── requirements.txt
+├── .env.example          # Example environment config
+├── requirements.txt      # Python dependencies
+├── README.md             # This file
+└── templates/
+    └── index.html        # HTML template
 ```
 
 ## 🎬 Demo Flow

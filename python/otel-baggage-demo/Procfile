@@ -1,10 +1,11 @@
-# Procfile for running all services with honcho
-# Usage: honcho start
+# Procfile for honcho process manager
+# Defines the processes to run for the baggage demo
 #
-# Each line defines a process:
+# Usage: honcho start
 # <process_name>: <command>
 # -u flag makes Python unbuffered so logs appear immediately
+# run.sh loads .env and exports variables before executing the command
 
-processor: OTEL_SERVICE_NAME=baggage-processor opentelemetry-instrument python -u processor.py
-pricing: OTEL_SERVICE_NAME=baggage-pricing opentelemetry-instrument python -u pricing.py
-frontend: OTEL_SERVICE_NAME=baggage-frontend opentelemetry-instrument python -u frontend.py
+processor: OTEL_SERVICE_NAME=baggage-processor opentelemetry-instrument python processor.py
+pricing: OTEL_SERVICE_NAME=baggage-pricing opentelemetry-instrument python pricing.py
+frontend: OTEL_SERVICE_NAME=baggage-frontend opentelemetry-instrument python frontend.py
