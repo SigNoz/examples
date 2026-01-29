@@ -25,17 +25,19 @@ Processor (8890) → Reads baggage, applies discount to prices
 
 ### 1. Install Dependencies
 
+Note: we recommend using Python 3.10 or higher for this demo.
+
 ```bash
 cd /Users/dhruv/code/examples/python/otel-baggage-demo
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 2. Start All Services (Single Command!)
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 honcho start
 ```
 
