@@ -9,7 +9,7 @@ export class TelemetryService implements OnModuleDestroy {
   async initializeTelemetry(): Promise<void> {
     try {
       // Import the tracer configuration
-      const tracerModule = await import('../../tracer.production');
+      const tracerModule = await import('../../tracer.signoz');
       this.sdk = tracerModule.default;
 
       await this.sdk.start();

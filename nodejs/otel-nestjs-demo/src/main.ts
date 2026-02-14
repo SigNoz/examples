@@ -1,5 +1,5 @@
 // THIS MUST BE THE FIRST IMPORT
-import tracer from '../tracer.production';
+import tracer from '../tracer.signoz';
 
 // Now import NestJS and other application modules
 import { NestFactory } from '@nestjs/core';
