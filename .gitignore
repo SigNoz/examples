@@ -7,3 +7,7 @@ opentelemetry-collector/otelcol-contrib-demo/builder/ocb
 # env files
 .env
 .env.local
+
+# NodeJS
+node_modules/
+nodejs/**/dist/
