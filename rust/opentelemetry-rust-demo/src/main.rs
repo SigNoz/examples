@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -12,15 +13,21 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use opentelemetry::KeyValue;
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
+use opentelemetry::metrics::{Histogram, UpDownCounter};
 use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
 use opentelemetry_otlp::{
     SpanExporter as OtlpSpanExporter, WithExportConfig, WithHttpConfig, WithTonicConfig,
 };
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
     HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
 };
-use opentelemetry_stdout::SpanExporter as StdoutSpanExporter;
+use opentelemetry_semantic_conventions::metric::{
+    HTTP_SERVER_ACTIVE_REQUESTS, HTTP_SERVER_REQUEST_DURATION,
+};
+use opentelemetry_stdout;
 use serde;
 use tokio::net::TcpListener;
 
@@ -108,23 +115,37 @@ async fn router(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let tracer = get_tracer();
-    let path = request.uri().path();
+    let metrics = get_metrics();
+    // convert to owned Strings before request is moved into the handler below
+    let path = request.uri().path().to_string();
+    let method = request.method().to_string();
     println!("router: received request for {}", path);
 
     let mut span = tracer
-        .span_builder(format!("{} {}", request.method(), path))
+        .span_builder(format!("{} {}", method, path))
         .with_kind(SpanKind::Server)
         .with_attributes(vec![
-            KeyValue::new(HTTP_REQUEST_METHOD, request.method().to_string()),
+            KeyValue::new(HTTP_REQUEST_METHOD, method.clone()),
             KeyValue::new(URL_PATH, path.to_string()),
         ])
         .start(tracer);
 
-    match path {
+    // active_requests labels only use method+path: we don't know status_code yet
+    let inflight_attrs = &[
+        KeyValue::new(HTTP_REQUEST_METHOD, method.clone()),
+        KeyValue::new(URL_PATH, path.to_string()),
+    ];
+
+    // increment before the handler runs to track true in-flight requests
+    metrics.active_requests.add(1, inflight_attrs);
+
+    // start the timer before dispatching to measure end-to-end request duration
+    let start = Instant::now();
+
+    let result = match path.as_str() {
         "/" => index(request).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
         _ => {
-            // explicitly set the status as error for better visibility in the trace
             span.set_status(Status::Error {
                 description: "Resource not found".into(),
             });
@@ -137,7 +158,25 @@ async fn router(
                 .body(Full::new(Bytes::from("Resource not found")))
                 .unwrap())
         }
-    }
+    };
+
+    // decrement now that the request has completed
+    metrics.active_requests.add(-1, inflight_attrs);
+
+    // record request duration and total count with the full attribute set including status
+    let status_code = result.as_ref().unwrap().status().as_u16() as i64;
+    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+    let completed_attrs = &[
+        KeyValue::new(HTTP_REQUEST_METHOD, method),
+        KeyValue::new(URL_PATH, path),
+        KeyValue::new(HTTP_RESPONSE_STATUS_CODE, status_code),
+    ];
+    metrics
+        .request_duration
+        .record(duration_ms, completed_attrs);
+
+    result
 }
 
 fn init_tracer_provider() {
@@ -152,24 +191,82 @@ fn init_tracer_provider() {
     //     .build()
     //     .unwrap();
 
-    // * use the HTTP exporter if using a cloud-based backend like Signoz or a collector running behind a proxy
+    // * use the HTTP exporter when targeting a cloud backend or a collector behind a proxy
     let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap() + "/v1/traces";
     let otlp_exporter = OtlpSpanExporter::builder()
         .with_http()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
+        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
         .with_endpoint(otlp_endpoint)
         .with_headers(headers)
         .build()
         .unwrap();
 
     let provider = SdkTracerProvider::builder()
-        // use simple exporter for debugging on the terminal
-        .with_simple_exporter(StdoutSpanExporter::default())
-        // use batch exporter to reduce network round trips
+        .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
         .with_batch_exporter(otlp_exporter)
         .build();
 
     global::set_tracer_provider(provider);
+}
+
+fn init_meter_provider() {
+    let mut headers = HashMap::new();
+    headers.insert(
+        "signoz-ingestion-key".to_string(),
+        std::env::var("SIGNOZ_INGESTION_KEY").unwrap_or_default(),
+    );
+
+    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
+
+    let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_http()
+        .with_endpoint(format!("{}/v1/metrics", otlp_endpoint))
+        .with_headers(headers)
+        .build()
+        .expect("Failed to create OTLP exporter");
+
+    // the reader object controls how often metrics are exported
+    let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
+        .with_interval(Duration::from_secs(5))
+        .build();
+    let otlp_reader = PeriodicReader::builder(otlp_exporter)
+        // this should be high enough to avoid overloading the backend but low enough for accurate analysis
+        .with_interval(Duration::from_secs(30))
+        .build();
+
+    let provider = SdkMeterProvider::builder()
+        .with_reader(otlp_reader)
+        .with_reader(stdout_reader)
+        .build();
+
+    global::set_meter_provider(provider);
+}
+// holds initialized metric instruments — created once and reused across all requests
+struct AppMetrics {
+    // tracks currently in-flight requests (incremented on arrival, decremented on completion)
+    active_requests: UpDownCounter<i64>,
+    // measures end-to-end HTTP request duration in milliseconds as a histogram
+    // this powers latency percentile dashboards (p50, p95, p99) in your backend
+    request_duration: Histogram<f64>,
+}
+
+fn get_metrics() -> &'static AppMetrics {
+    static METRICS: OnceLock<AppMetrics> = OnceLock::new();
+    METRICS.get_or_init(|| {
+        let meter = global::meter("opentelemetry-rust-demo");
+        AppMetrics {
+            active_requests: meter
+                .i64_up_down_counter(HTTP_SERVER_ACTIVE_REQUESTS)
+                .with_description("Active HTTP requests")
+                .with_unit("{request}")
+                .build(),
+            request_duration: meter
+                .f64_histogram(HTTP_SERVER_REQUEST_DURATION)
+                .with_description("End-to-end HTTP request duration in milliseconds")
+                .with_unit("s")
+                .build(),
+        }
+    })
 }
 
 // ensures the tracer is initialized only once throughout the application's lifespan
@@ -185,6 +282,7 @@ async fn main() {
 
     println!("Listening on http://{}", addr);
     init_tracer_provider();
+    init_meter_provider();
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
