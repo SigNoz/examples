@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use http_body_util::{BodyExt, Full};
@@ -38,8 +38,15 @@ fn fibonacci(n: u8) -> u16 {
     }
 }
 
-async fn index(r: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+async fn index(
+    r: Request<hyper::body::Incoming>,
+    span: &mut BoxedSpan,
+) -> Result<Response<Full<Bytes>>, Infallible> {
     println!("{} {}\nHeaders:\n{:#?}", r.method(), r.uri(), r.headers());
+    span.set_attribute(KeyValue::new(
+        HTTP_RESPONSE_STATUS_CODE,
+        StatusCode::OK.as_u16() as i64,
+    ));
     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
 }
 
@@ -114,36 +121,32 @@ async fn calculate_fibonacci(
 async fn router(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let tracer = get_tracer();
-    let metrics = get_metrics();
     // convert to owned Strings before request is moved into the handler below
     let path = request.uri().path().to_string();
     let method = request.method().to_string();
+
     println!("router: received request for {}", path);
 
-    let mut span = tracer
+    let method_kv = KeyValue::new(HTTP_REQUEST_METHOD, method.clone());
+    let path_kv = KeyValue::new(URL_PATH, path.clone());
+
+    let mut span = TRACER
         .span_builder(format!("{} {}", method, path))
         .with_kind(SpanKind::Server)
-        .with_attributes(vec![
-            KeyValue::new(HTTP_REQUEST_METHOD, method.clone()),
-            KeyValue::new(URL_PATH, path.to_string()),
-        ])
-        .start(tracer);
+        .with_attributes(vec![method_kv.clone(), path_kv.clone()])
+        .start(&*TRACER);
 
     // active_requests labels only use method+path: we don't know status_code yet
-    let inflight_attrs = &[
-        KeyValue::new(HTTP_REQUEST_METHOD, method.clone()),
-        KeyValue::new(URL_PATH, path.to_string()),
-    ];
+    let inflight_attrs = [method_kv.clone(), path_kv.clone()];
 
     // increment before the handler runs to track true in-flight requests
-    metrics.active_requests.add(1, inflight_attrs);
+    METRICS.active_requests.add(1, &inflight_attrs);
 
     // start the timer before dispatching to measure end-to-end request duration
     let start = Instant::now();
 
     let result = match path.as_str() {
-        "/" => index(request).await,
+        "/" => index(request, &mut span).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
         _ => {
             span.set_status(Status::Error {
@@ -161,30 +164,54 @@ async fn router(
     };
 
     // decrement now that the request has completed
-    metrics.active_requests.add(-1, inflight_attrs);
+    METRICS.active_requests.add(-1, &inflight_attrs);
 
     // record request duration and total count with the full attribute set including status
     let status_code = result.as_ref().unwrap().status().as_u16() as i64;
     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-    let completed_attrs = &[
-        KeyValue::new(HTTP_REQUEST_METHOD, method),
-        KeyValue::new(URL_PATH, path),
+    let completed_attrs = [
+        method_kv,
+        path_kv,
         KeyValue::new(HTTP_RESPONSE_STATUS_CODE, status_code),
     ];
-    metrics
+    METRICS
         .request_duration
-        .record(duration_ms, completed_attrs);
+        .record(duration_ms, &completed_attrs);
 
     result
 }
 
-fn init_tracer_provider() {
-    let headers = HashMap::from([(
-        "signoz-ingestion-key".to_string(),
-        std::env::var("SIGNOZ_INGESTION_KEY").unwrap(),
-    )]);
+// initialize global variables to keep duplication to a minimum
+lazy_static! {
+    static ref SIGNOZ_HEADERS: HashMap<String, String> = {
+        let mut headers = HashMap::new();
+        if let Ok(key) = std::env::var("SIGNOZ_INGESTION_KEY") {
+            headers.insert("signoz-ingestion-key".to_string(), key);
+        }
+        headers
+    };
+    static ref OTLP_ENDPOINT: String =
+        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
+    static ref METRICS: AppMetrics = {
+        let meter = global::meter("opentelemetry-rust-demo");
+        AppMetrics {
+            active_requests: meter
+                .i64_up_down_counter(HTTP_SERVER_ACTIVE_REQUESTS)
+                .with_description("Active HTTP requests")
+                .with_unit("{request}")
+                .build(),
+            request_duration: meter
+                .f64_histogram(HTTP_SERVER_REQUEST_DURATION)
+                .with_description("End-to-end HTTP request duration in milliseconds")
+                .with_unit("s")
+                .build(),
+        }
+    };
+    static ref TRACER: BoxedTracer = global::tracer("opentelemetry-rust-demo");
+}
 
+fn init_tracer_provider() {
     // * feel free to use the gRPC exporter if using a local collector instance
     // let otlp_exporter = OtlpSpanExporter::builder()
     //     .with_tonic()
@@ -192,12 +219,12 @@ fn init_tracer_provider() {
     //     .unwrap();
 
     // * use the HTTP exporter when targeting a cloud backend or a collector behind a proxy
-    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap() + "/v1/traces";
+    let otlp_endpoint = format!("{}/v1/traces", *OTLP_ENDPOINT);
     let otlp_exporter = OtlpSpanExporter::builder()
         .with_http()
         .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
         .with_endpoint(otlp_endpoint)
-        .with_headers(headers)
+        .with_headers(SIGNOZ_HEADERS.clone())
         .build()
         .unwrap();
 
@@ -210,18 +237,13 @@ fn init_tracer_provider() {
 }
 
 fn init_meter_provider() {
-    let mut headers = HashMap::new();
-    headers.insert(
-        "signoz-ingestion-key".to_string(),
-        std::env::var("SIGNOZ_INGESTION_KEY").unwrap_or_default(),
-    );
-
-    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
+    let otlp_endpoint = format!("{}/v1/metrics", *OTLP_ENDPOINT);
 
     let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
-        .with_endpoint(format!("{}/v1/metrics", otlp_endpoint))
-        .with_headers(headers)
+        .with_endpoint(otlp_endpoint)
+        .with_headers(SIGNOZ_HEADERS.clone())
+        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
         .build()
         .expect("Failed to create OTLP exporter");
 
@@ -241,6 +263,7 @@ fn init_meter_provider() {
 
     global::set_meter_provider(provider);
 }
+
 // holds initialized metric instruments — created once and reused across all requests
 struct AppMetrics {
     // tracks currently in-flight requests (incremented on arrival, decremented on completion)
@@ -248,31 +271,6 @@ struct AppMetrics {
     // measures end-to-end HTTP request duration in milliseconds as a histogram
     // this powers latency percentile dashboards (p50, p95, p99) in your backend
     request_duration: Histogram<f64>,
-}
-
-fn get_metrics() -> &'static AppMetrics {
-    static METRICS: OnceLock<AppMetrics> = OnceLock::new();
-    METRICS.get_or_init(|| {
-        let meter = global::meter("opentelemetry-rust-demo");
-        AppMetrics {
-            active_requests: meter
-                .i64_up_down_counter(HTTP_SERVER_ACTIVE_REQUESTS)
-                .with_description("Active HTTP requests")
-                .with_unit("{request}")
-                .build(),
-            request_duration: meter
-                .f64_histogram(HTTP_SERVER_REQUEST_DURATION)
-                .with_description("End-to-end HTTP request duration in milliseconds")
-                .with_unit("s")
-                .build(),
-        }
-    })
-}
-
-// ensures the tracer is initialized only once throughout the application's lifespan
-fn get_tracer() -> &'static BoxedTracer {
-    static TRACER: OnceLock<BoxedTracer> = OnceLock::new();
-    TRACER.get_or_init(|| global::tracer("opentelemetry-rust-demo"))
 }
 
 #[tokio::main]

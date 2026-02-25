@@ -22,7 +22,6 @@ opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = [
     "grpc-tonic",
     "http-json",
-    "http-proto",
     # * this is mandatory to export data directly to any deployed backend not in local network!
     "reqwest-rustls",
 ] }
