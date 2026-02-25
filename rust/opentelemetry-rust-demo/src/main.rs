@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
@@ -12,9 +13,11 @@ use hyper_util::rt::TokioIo;
 use opentelemetry::KeyValue;
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
-use opentelemetry_otlp::SpanExporter as OtlpSpanExporter;
+use opentelemetry_otlp::{
+    SpanExporter as OtlpSpanExporter, WithExportConfig, WithHttpConfig, WithTonicConfig,
+};
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use opentelemetry_stdout::SpanExporter;
+use opentelemetry_stdout::SpanExporter as StdoutSpanExporter;
 use serde;
 use tokio::net::TcpListener;
 
@@ -117,9 +120,34 @@ async fn router(
 }
 
 fn init_tracer_provider() {
+    let headers = HashMap::from([(
+        "signoz-ingestion-key".to_string(),
+        std::env::var("SIGNOZ_INGESTION_KEY").unwrap(),
+    )]);
+
+    // * feel free to use the gRPC exporter if using a local collector instance
+    // let otlp_exporter = OtlpSpanExporter::builder()
+    //     .with_tonic()
+    //     .build()
+    //     .unwrap();
+
+    // * use the HTTP exporter if using a cloud-based backend like Signoz or a collector running behind a proxy
+    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap() + "/v1/traces";
+    let otlp_exporter = OtlpSpanExporter::builder()
+        .with_http()
+        .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
+        .with_endpoint(otlp_endpoint)
+        .with_headers(headers)
+        .build()
+        .unwrap();
+
     let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(SpanExporter::default())
+        // use simple exporter for debugging on the terminal
+        .with_simple_exporter(StdoutSpanExporter::default())
+        // use batch exporter to reduce network round trips
+        .with_batch_exporter(otlp_exporter)
         .build();
+
     global::set_tracer_provider(provider);
 }
 
