@@ -90,6 +90,10 @@ async fn calculate_fibonacci(
         }
     };
 
+    // sleep for random amount of time to add variance and emulate "real work"
+    let sleep_time = rand::random_range(250..750);
+    tokio::time::sleep(Duration::from_millis(sleep_time)).await;
+
     let number = body_data.number;
     let fib = fibonacci(number);
 
@@ -145,14 +149,12 @@ async fn router(
     // start the timer before dispatching to measure end-to-end request duration
     let start = Instant::now();
 
-    // sleep for random amount of time to add variance
-    let sleep_time = rand::random_range(250..750);
-    tokio::time::sleep(Duration::from_millis(sleep_time)).await;
-
     let result = match path.as_str() {
         "/" => index(request, &mut span).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
         _ => {
+            let sleep_time = rand::random_range(50..100);
+            tokio::time::sleep(Duration::from_millis(sleep_time)).await;
             span.set_status(Status::Error {
                 description: "Resource not found".into(),
             });
