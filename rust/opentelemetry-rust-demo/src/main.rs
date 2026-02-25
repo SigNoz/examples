@@ -145,6 +145,10 @@ async fn router(
     // start the timer before dispatching to measure end-to-end request duration
     let start = Instant::now();
 
+    // sleep for random amount of time to add variance
+    let sleep_time = rand::random_range(250..750);
+    tokio::time::sleep(Duration::from_millis(sleep_time)).await;
+
     let result = match path.as_str() {
         "/" => index(request, &mut span).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
@@ -168,7 +172,8 @@ async fn router(
 
     // record request duration and total count with the full attribute set including status
     let status_code = result.as_ref().unwrap().status().as_u16() as i64;
-    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+    // OTel semantic convention: http.server.request.duration must be in seconds
+    let duration_secs = start.elapsed().as_secs_f64();
 
     let completed_attrs = [
         method_kv,
@@ -177,7 +182,7 @@ async fn router(
     ];
     METRICS
         .request_duration
-        .record(duration_ms, &completed_attrs);
+        .record(duration_secs, &completed_attrs);
 
     result
 }
@@ -203,8 +208,15 @@ lazy_static! {
                 .build(),
             request_duration: meter
                 .f64_histogram(HTTP_SERVER_REQUEST_DURATION)
-                .with_description("End-to-end HTTP request duration in milliseconds")
+                .with_description("End-to-end HTTP request duration in seconds")
                 .with_unit("s")
+                // OTel-recommended boundaries for HTTP latency (in seconds).
+                // Without these, all sub-second requests collapse into a single default [0, 5) bucket,
+                // making P95/P99 meaningless.
+                .with_boundaries(vec![
+                    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5,
+                    10.0,
+                ])
                 .build(),
         }
     };
