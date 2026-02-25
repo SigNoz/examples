@@ -22,6 +22,7 @@ async fn index(r: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>
     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
 }
 
+/// this struct makes it convenient to handle numbers exceeding the u8 limit
 #[derive(Debug, serde::Deserialize)]
 struct FibonacciRequest {
     number: u8,
@@ -36,29 +37,31 @@ async fn calculate_fibonacci(
 
     // deserialize the json body into FibonacciRequest struct
     // returning an apt error if the number is too large, to keep server responsive
-    let fib: u16;
-    match serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) {
-        Ok(body_data) => {
-            fib = fibonacci(body_data.number);
-            Ok(Response::new(Full::new(Bytes::from(fib.to_string()))))
-        }
+    let body_data = match serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) {
+        Ok(data) => data,
         Err(err) => {
+            let error_payload = serde_json::json!({
+                "error": format!("Invalid payload: {}", err)
+            });
             return Ok(Response::builder()
                 .status(StatusCode::UNPROCESSABLE_ENTITY)
-                .body(Full::new(Bytes::from(format!("Error: {}", err))))
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(error_payload.to_string())))
                 .unwrap());
         }
-    }
+    };
 
-    // let Ok(body_data) = serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) else {
-    //     return Ok(Response::builder()
-    //         .status(StatusCode::UNPROCESSABLE_ENTITY)
-    //         .body(Full::new(Bytes::from("Number too large")))
-    //         .unwrap());
-    // };
+    let fib = fibonacci(body_data.number);
+    let success_payload = serde_json::json!({
+        "number": body_data.number,
+        "result": fib
+    });
 
-    // let fib = fibonacci(body_data.number);
-    // Ok(Response::new(Full::new(Bytes::from(fib.to_string()))))
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(success_payload.to_string())))
+        .unwrap())
 }
 
 /// handles routing incoming requests to appropriate request handler functions
