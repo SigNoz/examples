@@ -14,11 +14,14 @@ use hyper_util::rt::TokioIo;
 use opentelemetry::KeyValue;
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
 use opentelemetry::metrics::{Histogram, UpDownCounter};
+use opentelemetry::propagation::{Extractor, Injector};
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
 use opentelemetry_otlp::{
     SpanExporter as OtlpSpanExporter, WithExportConfig, WithHttpConfig, WithTonicConfig,
 };
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
@@ -31,9 +34,39 @@ use opentelemetry_stdout;
 use serde;
 use tokio::net::TcpListener;
 
-fn fibonacci(n: u8) -> u16 {
+// adapts Hyper headers to OTel propagation so we can extract `traceparent`from inbound requests
+struct HeaderExtractor<'a>(&'a hyper::header::HeaderMap);
+
+impl<'a> Extractor for HeaderExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|k| k.as_str()).collect()
+    }
+}
+
+// adapts Hyper headers to OTel propagation so we can inject trace context into outbound HTTP requests
+struct HeaderInjector<'a>(&'a mut hyper::header::HeaderMap);
+
+impl<'a> Injector for HeaderInjector<'a> {
+    fn set(&mut self, key: &str, value: String) {
+        let header_name = match hyper::header::HeaderName::from_bytes(key.as_bytes()) {
+            Ok(name) => name,
+            Err(_) => return,
+        };
+        let header_value = match hyper::header::HeaderValue::from_str(&value) {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        self.0.insert(header_name, header_value);
+    }
+}
+
+fn fibonacci(n: u8) -> u128 {
     match n {
-        0 | 1 => n as u16,
+        0 | 1 => n as u128,
         _ => fibonacci(n - 1) + fibonacci(n - 2),
     }
 }
@@ -42,7 +75,6 @@ async fn index(
     r: Request<hyper::body::Incoming>,
     span: &mut BoxedSpan,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    println!("{} {}\nHeaders:\n{:#?}", r.method(), r.uri(), r.headers());
     span.set_attribute(KeyValue::new(
         HTTP_RESPONSE_STATUS_CODE,
         StatusCode::OK.as_u16() as i64,
@@ -131,6 +163,10 @@ async fn router(
 
     println!("router: received request for {}", path);
 
+    // parse incoming trace headers into a Context so the server span continues the caller's trace (if present)
+    let parent_cx =
+        global::get_text_map_propagator(|prop| prop.extract(&HeaderExtractor(request.headers())));
+
     let method_kv = KeyValue::new(HTTP_REQUEST_METHOD, method.clone());
     let path_kv = KeyValue::new(URL_PATH, path.clone());
 
@@ -138,7 +174,8 @@ async fn router(
         .span_builder(format!("{} {}", method, path))
         .with_kind(SpanKind::Server)
         .with_attributes(vec![method_kv.clone(), path_kv.clone()])
-        .start(&*TRACER);
+        // `start_with_context` makes this span a child of the extracted parent instead of starting a new root trace.
+        .start_with_context(&*TRACER, &parent_cx);
 
     // active_requests labels only use method+path: we don't know status_code yet
     let inflight_attrs = [method_kv.clone(), path_kv.clone()];
@@ -152,6 +189,7 @@ async fn router(
     let result = match path.as_str() {
         "/" => index(request, &mut span).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
+        "/external" => httpbin(request, &mut span).await,
         _ => {
             let sleep_time = rand::random_range(50..100);
             tokio::time::sleep(Duration::from_millis(sleep_time)).await;
@@ -189,6 +227,105 @@ async fn router(
     result
 }
 
+async fn httpbin(
+    _r: Request<hyper::body::Incoming>,
+    span: &mut BoxedSpan,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    // build a parent Context from the server span so the outgoing client span is linked into the same trace
+    let parent_cx =
+        opentelemetry::Context::new().with_remote_span_context(span.span_context().clone());
+
+    let mut client_span = TRACER
+        .span_builder("GET httpbin.org/anything")
+        .with_kind(SpanKind::Client)
+        .start_with_context(&*TRACER, &parent_cx);
+
+    let client_cx =
+        opentelemetry::Context::new().with_remote_span_context(client_span.span_context().clone());
+
+    let mut outbound_headers = hyper::header::HeaderMap::new();
+    global::get_text_map_propagator(|prop| {
+        // inject the client span context into headers so downstream services can join this trace via `traceparent`
+        prop.inject_context(&client_cx, &mut HeaderInjector(&mut outbound_headers));
+    });
+
+    let traceparent = outbound_headers
+        .get("traceparent")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    let client = reqwest::Client::new();
+    let upstream = client
+        .get("https://httpbin.org/anything")
+        .headers(outbound_headers.clone())
+        .send()
+        .await;
+
+    match upstream {
+        Ok(resp) => {
+            let upstream_status = resp.status();
+            let upstream_body = resp.text().await.unwrap_or_default();
+
+            client_span.set_attribute(KeyValue::new(
+                HTTP_RESPONSE_STATUS_CODE,
+                upstream_status.as_u16() as i64,
+            ));
+            span.set_attribute(KeyValue::new(
+                "demo.httpbin.status_code",
+                upstream_status.as_u16() as i64,
+            ));
+
+            let upstream_json = serde_json::from_str::<serde_json::Value>(&upstream_body)
+                .unwrap_or_else(|_| serde_json::json!({ "raw": upstream_body }));
+
+            span.set_attribute(KeyValue::new(
+                HTTP_RESPONSE_STATUS_CODE,
+                StatusCode::OK.as_u16() as i64,
+            ));
+
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "note": "This endpoint calls https://httpbin.org/anything with propagated trace context.",
+                        "propagated": {
+                            "traceparent": traceparent
+                        },
+                        "httpbin": upstream_json
+                    })
+                    .to_string(),
+                )))
+                .unwrap())
+        }
+        Err(err) => {
+            let error_message = err.to_string();
+            client_span.set_status(Status::Error {
+                description: error_message.clone().into(),
+            });
+            span.set_status(Status::Error {
+                description: error_message.clone().into(),
+            });
+            span.set_attribute(KeyValue::new("demo.httpbin.error", error_message.clone()));
+            span.set_attribute(KeyValue::new(
+                HTTP_RESPONSE_STATUS_CODE,
+                StatusCode::BAD_GATEWAY.as_u16() as i64,
+            ));
+
+            Ok(Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": error_message
+                    })
+                    .to_string(),
+                )))
+                .unwrap())
+        }
+    }
+}
+
 // initialize global variables to keep duplication to a minimum
 lazy_static! {
     static ref SIGNOZ_HEADERS: HashMap<String, String> = {
@@ -214,7 +351,7 @@ lazy_static! {
                 .with_unit("s")
                 // OTel-recommended boundaries for HTTP latency (in seconds).
                 // Without these, all sub-second requests collapse into a single default [0, 5) bucket,
-                // making P95/P99 meaningless.
+                // making P95/P99 meaningless
                 .with_boundaries(vec![
                     0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5,
                     10.0,
@@ -226,6 +363,12 @@ lazy_static! {
 }
 
 fn init_tracer_provider() {
+    // set the propagator to be used for extracting and injecting trace context; extraction and injection won't work
+    // unless propagators are defined globally first
+    global::set_text_map_propagator(opentelemetry::propagation::TextMapCompositePropagator::new(
+        vec![Box::new(TraceContextPropagator::new())],
+    ));
+
     // * feel free to use the gRPC exporter if using a local collector instance
     // let otlp_exporter = OtlpSpanExporter::builder()
     //     .with_tonic()
@@ -243,7 +386,8 @@ fn init_tracer_provider() {
         .unwrap();
 
     let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
+        // enable stdout exporter for debugging
+        // .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
         .with_batch_exporter(otlp_exporter)
         .build();
 
@@ -271,19 +415,20 @@ fn init_meter_provider() {
         .build();
 
     let provider = SdkMeterProvider::builder()
+        // enable stdout reader for debugging
+        // .with_reader(stdout_reader)
         .with_reader(otlp_reader)
-        .with_reader(stdout_reader)
         .build();
 
     global::set_meter_provider(provider);
 }
 
-// holds initialized metric instruments — created once and reused across all requests
+// holds initialized metric instruments, created once and reused across all requests
 struct AppMetrics {
     // tracks currently in-flight requests (incremented on arrival, decremented on completion)
     active_requests: UpDownCounter<i64>,
     // measures end-to-end HTTP request duration in milliseconds as a histogram
-    // this powers latency percentile dashboards (p50, p95, p99) in your backend
+    // enables percentiles (p50, p95, p99) based analysis in OpenTelemetry backends
     request_duration: Histogram<f64>,
 }
 
