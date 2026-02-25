@@ -1,5 +1,7 @@
+#![allow(unused_imports)]
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -7,6 +9,12 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use opentelemetry::KeyValue;
+use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
+use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
+use opentelemetry_otlp::SpanExporter as OtlpSpanExporter;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_stdout::SpanExporter;
 use serde;
 use tokio::net::TcpListener;
 
@@ -22,7 +30,7 @@ async fn index(r: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>
     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
 }
 
-/// this struct makes it convenient to handle numbers exceeding the u8 limit
+// this struct makes it convenient to validate numbers exceeding the u8 limit
 #[derive(Debug, serde::Deserialize)]
 struct FibonacciRequest {
     number: u8,
@@ -30,6 +38,7 @@ struct FibonacciRequest {
 
 async fn calculate_fibonacci(
     r: Request<hyper::body::Incoming>,
+    span: &mut BoxedSpan,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     // parse the input body data into Bytes format
     let body = r.into_body().collect().await.unwrap();
@@ -40,9 +49,15 @@ async fn calculate_fibonacci(
     let body_data = match serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) {
         Ok(data) => data,
         Err(err) => {
+            let error_message = err.to_string();
+
             let error_payload = serde_json::json!({
-                "error": format!("Invalid payload: {}", err)
+                "error": error_message
             });
+            span.set_status(Status::Error {
+                description: error_message.into(),
+            });
+
             return Ok(Response::builder()
                 .status(StatusCode::UNPROCESSABLE_ENTITY)
                 .header("Content-Type", "application/json")
@@ -51,32 +66,67 @@ async fn calculate_fibonacci(
         }
     };
 
-    let fib = fibonacci(body_data.number);
-    let success_payload = serde_json::json!({
-        "number": body_data.number,
-        "result": fib
-    });
+    let number = body_data.number;
+    let fib = fibonacci(number);
+
+    // define and set relevant information as the span attributes for more context
+    // using ::new for instantiating KeyValue struct as it's marked as non-exhaustive
+    let number_key_value = KeyValue::new("fibonacci.number", number as i64);
+    let fib_key_value = KeyValue::new("fibonacci.result", fib as i64);
+    span.set_attributes(vec![number_key_value, fib_key_value]);
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(success_payload.to_string())))
+        .body(Full::new(Bytes::from(
+            serde_json::json!({
+                "number": number,
+                "result": fib
+            })
+            .to_string(),
+        )))
         .unwrap())
 }
 
-/// handles routing incoming requests to appropriate request handler functions
+// handles routing incoming requests to appropriate request handler functions
 async fn router(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    let tracer = get_tracer();
     println!("router: received request for {}", request.uri().path());
+
+    let mut span = tracer
+        .span_builder(format!("{} {}", request.method(), request.uri().path()))
+        .with_kind(SpanKind::Server)
+        .start(tracer);
+
     match request.uri().path() {
         "/" => index(request).await,
-        "/fibonacci" => calculate_fibonacci(request).await,
-        _ => Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Full::new(Bytes::from("Resource not found")))
-            .unwrap()),
+        "/fibonacci" => calculate_fibonacci(request, &mut span).await,
+        _ => {
+            // explicitly set the status as error for better visibility in the trace
+            span.set_status(Status::Error {
+                description: "Resource not found".into(),
+            });
+            Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Full::new(Bytes::from("Resource not found")))
+                .unwrap())
+        }
     }
+}
+
+fn init_tracer_provider() {
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(SpanExporter::default())
+        .build();
+    global::set_tracer_provider(provider);
+}
+
+// ensures the tracer is initialized only once throughout the application's lifespan
+fn get_tracer() -> &'static BoxedTracer {
+    static TRACER: OnceLock<BoxedTracer> = OnceLock::new();
+    TRACER.get_or_init(|| global::tracer("opentelemetry-rust-demo"))
 }
 
 #[tokio::main]
@@ -85,6 +135,7 @@ async fn main() {
     let listener = TcpListener::bind(&addr).await.unwrap();
 
     println!("Listening on http://{}", addr);
+    init_tracer_provider();
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
