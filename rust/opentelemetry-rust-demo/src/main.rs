@@ -17,6 +17,9 @@ use opentelemetry_otlp::{
     SpanExporter as OtlpSpanExporter, WithExportConfig, WithHttpConfig, WithTonicConfig,
 };
 use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_semantic_conventions::attribute::{
+    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
+};
 use opentelemetry_stdout::SpanExporter as StdoutSpanExporter;
 use serde;
 use tokio::net::TcpListener;
@@ -60,6 +63,10 @@ async fn calculate_fibonacci(
             span.set_status(Status::Error {
                 description: error_message.into(),
             });
+            span.set_attribute(KeyValue::new(
+                HTTP_RESPONSE_STATUS_CODE,
+                StatusCode::UNPROCESSABLE_ENTITY.as_u16() as i64,
+            ));
 
             return Ok(Response::builder()
                 .status(StatusCode::UNPROCESSABLE_ENTITY)
@@ -76,7 +83,12 @@ async fn calculate_fibonacci(
     // using ::new for instantiating KeyValue struct as it's marked as non-exhaustive
     let number_key_value = KeyValue::new("fibonacci.number", number as i64);
     let fib_key_value = KeyValue::new("fibonacci.result", fib as i64);
+
     span.set_attributes(vec![number_key_value, fib_key_value]);
+    span.set_attribute(KeyValue::new(
+        HTTP_RESPONSE_STATUS_CODE,
+        StatusCode::OK.as_u16() as i64,
+    ));
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -96,14 +108,19 @@ async fn router(
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let tracer = get_tracer();
-    println!("router: received request for {}", request.uri().path());
+    let path = request.uri().path();
+    println!("router: received request for {}", path);
 
     let mut span = tracer
-        .span_builder(format!("{} {}", request.method(), request.uri().path()))
+        .span_builder(format!("{} {}", request.method(), path))
         .with_kind(SpanKind::Server)
+        .with_attributes(vec![
+            KeyValue::new(HTTP_REQUEST_METHOD, request.method().to_string()),
+            KeyValue::new(URL_PATH, path.to_string()),
+        ])
         .start(tracer);
 
-    match request.uri().path() {
+    match path {
         "/" => index(request).await,
         "/fibonacci" => calculate_fibonacci(request, &mut span).await,
         _ => {
@@ -111,6 +128,10 @@ async fn router(
             span.set_status(Status::Error {
                 description: "Resource not found".into(),
             });
+            span.set_attribute(KeyValue::new(
+                HTTP_RESPONSE_STATUS_CODE,
+                StatusCode::NOT_FOUND.as_u16() as i64,
+            ));
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Full::new(Bytes::from("Resource not found")))
