@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -12,22 +10,21 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use lazy_static::lazy_static;
 use opentelemetry::KeyValue;
-use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
+use opentelemetry::global;
 use opentelemetry::metrics::{Histogram, UpDownCounter};
 use opentelemetry::propagation::{Extractor, Injector};
-use opentelemetry::trace::TraceContextExt;
-use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
+use opentelemetry::trace::{Status, TracerProvider as _};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{
     LogExporter as OtlpLogExporter, SpanExporter as OtlpSpanExporter, WithExportConfig,
-    WithHttpConfig, WithTonicConfig,
+    WithHttpConfig,
 };
 use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider, SimpleLogProcessor};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::runtime::Tokio;
-use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider};
 use opentelemetry_semantic_conventions::attribute::{
     HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
 };
@@ -35,16 +32,16 @@ use opentelemetry_semantic_conventions::metric::{
     HTTP_SERVER_ACTIVE_REQUESTS, HTTP_SERVER_REQUEST_DURATION,
 };
 use opentelemetry_stdout;
-use serde;
 use tokio::net::TcpListener;
-use tracing::{debug, error, info, info_span};
+use tracing::{Instrument, Span, debug, error, info, info_span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{EnvFilter, prelude::*};
 
-// we must maintain explicit OnceLock instance because `opentelemetry::global` doesn't expose trace/metric
-// equivalent global logger handler
+// we maintain an explicit OnceLock for logs because `opentelemetry::global` doesn't expose
+// trace/metric-equivalent global logger handlers
 static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 
-// adapts Hyper headers to OTel propagation so we can extract `traceparent`from inbound requests
+// adapts Hyper headers to OTel propagation so we can extract `traceparent` from inbound requests
 struct HeaderExtractor<'a>(&'a hyper::header::HeaderMap);
 
 impl<'a> Extractor for HeaderExtractor<'a> {
@@ -57,7 +54,6 @@ impl<'a> Extractor for HeaderExtractor<'a> {
     }
 }
 
-// adapts Hyper headers to OTel propagation so we can inject trace context into outbound HTTP requests
 struct HeaderInjector<'a>(&'a mut hyper::header::HeaderMap);
 
 impl<'a> Injector for HeaderInjector<'a> {
@@ -74,281 +70,11 @@ impl<'a> Injector for HeaderInjector<'a> {
     }
 }
 
-fn fibonacci(n: u8) -> u128 {
-    match n {
-        0 | 1 => n as u128,
-        _ => fibonacci(n - 1) + fibonacci(n - 2),
-    }
-}
-
-async fn index(
-    _: Request<hyper::body::Incoming>,
-    span: &mut BoxedSpan,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    span.set_attribute(KeyValue::new(
-        HTTP_RESPONSE_STATUS_CODE,
-        StatusCode::OK.as_u16() as i64,
-    ));
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
-}
-
-// this struct makes it convenient to validate numbers exceeding the u8 limit
-#[derive(Debug, serde::Deserialize)]
-struct FibonacciRequest {
-    number: u8,
-}
-
-async fn calculate_fibonacci(
-    r: Request<hyper::body::Incoming>,
-    span: &mut BoxedSpan,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    // parse the input body data into Bytes format
-    let body = r.into_body().collect().await.unwrap();
-    let body_byte_stream = body.to_bytes();
-
-    // deserialize the json body into FibonacciRequest struct
-    // returning an apt error if the number is too large, to keep server responsive
-    let body_data = match serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) {
-        Ok(data) => data,
-        Err(err) => {
-            let error_message = err.to_string();
-            let error_payload = serde_json::json!({
-                "error": error_message
-            });
-
-            span.set_status(Status::Error {
-                description: error_message.clone().into(),
-            });
-            span.set_attribute(KeyValue::new(
-                HTTP_RESPONSE_STATUS_CODE,
-                StatusCode::UNPROCESSABLE_ENTITY.as_u16() as i64,
-            ));
-
-            error!(
-                error.message = %error_message,
-                error.type = "Invalid Input",
-                "error parsing fibonacci payload"
-            );
-            return Ok(Response::builder()
-                .status(StatusCode::UNPROCESSABLE_ENTITY)
-                .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(error_payload.to_string())))
-                .unwrap());
-        }
-    };
-
-    // sleep for random amount of time to add variance and emulate "real work"
-    let sleep_time = rand::random_range(250..750);
-    tokio::time::sleep(Duration::from_millis(sleep_time)).await;
-
-    let number = body_data.number;
-    let fib = fibonacci(number);
-
-    // define and set relevant information as the span attributes for more context
-    // using ::new for instantiating KeyValue struct as it's marked as non-exhaustive
-    let number_key_value = KeyValue::new("fibonacci.number", number as i64);
-    let fib_key_value = KeyValue::new("fibonacci.result", fib as i64);
-
-    span.set_attributes(vec![number_key_value, fib_key_value]);
-    span.set_attribute(KeyValue::new(
-        HTTP_RESPONSE_STATUS_CODE,
-        StatusCode::OK.as_u16() as i64,
-    ));
-
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(
-            serde_json::json!({
-                "number": number,
-                "result": fib
-            })
-            .to_string(),
-        )))
-        .unwrap())
-}
-
-// handles routing incoming requests to appropriate request handler functions
-async fn router(
-    request: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    // convert to owned Strings before request is moved into the handler below
-    let path = request.uri().path().to_string();
-    let method = request.method().to_string();
-
-    let request_span = info_span!("http.request", http.method = %method, url.path = %path);
-    let _request_span_guard = request_span.enter();
-    debug!("received request");
-
-    // parse incoming trace headers into a Context so the server span continues the caller's trace (if present)
-    let parent_cx =
-        global::get_text_map_propagator(|prop| prop.extract(&HeaderExtractor(request.headers())));
-
-    let method_kv = KeyValue::new(HTTP_REQUEST_METHOD, method.clone());
-    let path_kv = KeyValue::new(URL_PATH, path.clone());
-
-    let mut span = TRACER
-        .span_builder(format!("{} {}", method, path))
-        .with_kind(SpanKind::Server)
-        .with_attributes(vec![method_kv.clone(), path_kv.clone()])
-        // `start_with_context` makes this span a child of the extracted parent instead of starting a new root trace.
-        .start_with_context(&*TRACER, &parent_cx);
-
-    // active_requests labels only use method+path: we don't know status_code yet
-    let inflight_attrs = [method_kv.clone(), path_kv.clone()];
-
-    // increment before the handler runs to track true in-flight requests
-    METRICS.active_requests.add(1, &inflight_attrs);
-
-    // start the timer before dispatching to measure end-to-end request duration
-    let start = Instant::now();
-
-    let result = match path.as_str() {
-        "/" => index(request, &mut span).await,
-        "/fibonacci" => calculate_fibonacci(request, &mut span).await,
-        "/external" => httpbin(request, &mut span).await,
-        _ => {
-            let sleep_time = rand::random_range(50..100);
-            tokio::time::sleep(Duration::from_millis(sleep_time)).await;
-            span.set_status(Status::Error {
-                description: "Resource not found".into(),
-            });
-            span.set_attribute(KeyValue::new(
-                HTTP_RESPONSE_STATUS_CODE,
-                StatusCode::NOT_FOUND.as_u16() as i64,
-            ));
-
-            error!("resource not found");
-
-            Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Full::new(Bytes::from("Resource not found")))
-                .unwrap())
-        }
-    };
-
-    // decrement now that the request has completed
-    METRICS.active_requests.add(-1, &inflight_attrs);
-
-    // record request duration and total count with the full attribute set including status
-    let status_code = result.as_ref().unwrap().status().as_u16() as i64;
-    // OTel semantic convention: http.server.request.duration must be in seconds
-    let duration_secs = start.elapsed().as_secs_f64();
-
-    let completed_attrs = [
-        method_kv,
-        path_kv,
-        KeyValue::new(HTTP_RESPONSE_STATUS_CODE, status_code),
-    ];
-    METRICS
-        .request_duration
-        .record(duration_secs, &completed_attrs);
-
-    result
-}
-
-async fn httpbin(
-    _r: Request<hyper::body::Incoming>,
-    span: &mut BoxedSpan,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    // build a parent Context from the server span so the outgoing client span is linked into the same trace
-    let parent_cx =
-        opentelemetry::Context::new().with_remote_span_context(span.span_context().clone());
-
-    let mut client_span = TRACER
-        .span_builder("GET httpbin.org/anything")
-        .with_kind(SpanKind::Client)
-        .start_with_context(&*TRACER, &parent_cx);
-
-    let client_cx =
-        opentelemetry::Context::new().with_remote_span_context(client_span.span_context().clone());
-
-    let mut outbound_headers = hyper::header::HeaderMap::new();
-    global::get_text_map_propagator(|prop| {
-        // inject the client span context into headers so downstream services can join this trace via `traceparent`
-        prop.inject_context(&client_cx, &mut HeaderInjector(&mut outbound_headers));
-    });
-
-    let traceparent = outbound_headers
-        .get("traceparent")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-
-    let client = reqwest::Client::new();
-    let upstream = client
-        .get("https://httpbin.org/anything")
-        .headers(outbound_headers.clone())
-        .send()
-        .await;
-
-    match upstream {
-        Ok(resp) => {
-            let upstream_status = resp.status();
-            let upstream_body = resp.text().await.unwrap_or_default();
-
-            client_span.set_attribute(KeyValue::new(
-                HTTP_RESPONSE_STATUS_CODE,
-                upstream_status.as_u16() as i64,
-            ));
-            span.set_attribute(KeyValue::new(
-                "demo.httpbin.status_code",
-                upstream_status.as_u16() as i64,
-            ));
-
-            let upstream_json = serde_json::from_str::<serde_json::Value>(&upstream_body)
-                .unwrap_or_else(|_| serde_json::json!({ "raw": upstream_body }));
-
-            span.set_attribute(KeyValue::new(
-                HTTP_RESPONSE_STATUS_CODE,
-                StatusCode::OK.as_u16() as i64,
-            ));
-            info!(
-                http.response.status_code = upstream_status.as_u16(),
-                "httpbin request succeeded"
-            );
-
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "note": "This endpoint calls https://httpbin.org/anything with propagated trace context.",
-                        "propagated": {
-                            "traceparent": traceparent
-                        },
-                        "httpbin": upstream_json
-                    })
-                    .to_string(),
-                )))
-                .unwrap())
-        }
-        Err(err) => {
-            let error_message = err.to_string();
-            client_span.set_status(Status::Error {
-                description: error_message.clone().into(),
-            });
-            span.set_status(Status::Error {
-                description: error_message.clone().into(),
-            });
-            span.set_attribute(KeyValue::new("demo.httpbin.error", error_message.clone()));
-            span.set_attribute(KeyValue::new(
-                HTTP_RESPONSE_STATUS_CODE,
-                StatusCode::BAD_GATEWAY.as_u16() as i64,
-            ));
-            error!(error.message = %error_message, "httpbin request failed");
-
-            Ok(Response::builder()
-                .status(StatusCode::BAD_GATEWAY)
-                .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": error_message
-                    })
-                    .to_string(),
-                )))
-                .unwrap())
-        }
-    }
+struct AppMetrics {
+    // tracks currently in-flight requests
+    active_requests: UpDownCounter<i64>,
+    // captures end-to-end HTTP request latency (seconds)
+    request_duration: Histogram<f64>,
 }
 
 // initialize global variables to keep duplication to a minimum
@@ -365,7 +91,7 @@ lazy_static! {
     static ref OTLP_ENDPOINT: String =
         std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
 
-    // we don't need meter for future use in our case, since we'll directly use the instruments created via the meter
+    // we don't need a global meter handle later because we'll reuse instruments directly
     static ref METRICS: AppMetrics = {
         let meter = global::meter("opentelemetry-rust-demo");
         AppMetrics {
@@ -378,22 +104,178 @@ lazy_static! {
                 .f64_histogram(HTTP_SERVER_REQUEST_DURATION)
                 .with_description("End-to-end HTTP request duration in seconds")
                 .with_unit("s")
-                // OTel-recommended boundaries for HTTP latency (in seconds).
+                // OTel-recommended boundaries for HTTP latency (in seconds)
                 // Without these, all sub-second requests collapse into a single default [0, 5) bucket,
                 // making P95/P99 meaningless
                 .with_boundaries(vec![
-                    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5,
-                    10.0,
+                    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
                 ])
                 .build(),
         }
     };
-
-    // we create spans using the tracer object in request handlers
-    static ref TRACER: BoxedTracer = global::tracer("opentelemetry-rust-demo");
 }
 
-fn init_tracer_provider() {
+fn fibonacci(n: u8) -> u128 {
+    match n {
+        0 | 1 => n as u128,
+        _ => fibonacci(n - 1) + fibonacci(n - 2),
+    }
+}
+
+async fn index(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    Span::current().set_attribute(HTTP_RESPONSE_STATUS_CODE, StatusCode::OK.as_u16() as i64);
+    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+}
+
+// this struct makes it convenient to validate numbers exceeding the u8 limit
+#[derive(Debug, serde::Deserialize)]
+struct FibonacciRequest {
+    number: u8,
+}
+
+async fn calculate_fibonacci(
+    request: Request<hyper::body::Incoming>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let body = request.into_body().collect().await.unwrap();
+    let body_byte_stream = body.to_bytes();
+
+    let body_data = match serde_json::from_slice::<FibonacciRequest>(&body_byte_stream) {
+        Ok(data) => data,
+        Err(err) => {
+            let error_message = err.to_string();
+            let error_payload = serde_json::json!({ "error": error_message });
+
+            Span::current().set_status(Status::error(error_message.clone()));
+            Span::current().set_attribute(
+                HTTP_RESPONSE_STATUS_CODE,
+                StatusCode::UNPROCESSABLE_ENTITY.as_u16() as i64,
+            );
+            Span::current().set_attribute("error.type", "Invalid Input");
+            Span::current().set_attribute("error.message", error_message.clone());
+
+            error!(
+                error.message = %error_message,
+                error.type = "Invalid Input",
+                "error parsing fibonacci payload"
+            );
+            return Ok(Response::builder()
+                .status(StatusCode::UNPROCESSABLE_ENTITY)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(error_payload.to_string())))
+                .unwrap());
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(rand::random_range(250..750))).await;
+
+    let number = body_data.number;
+    let fib = fibonacci(number);
+
+    Span::current().set_attribute("fibonacci.number", number as i64);
+    Span::current().set_attribute("fibonacci.result", fib as i64);
+    Span::current().set_attribute(HTTP_RESPONSE_STATUS_CODE, StatusCode::OK.as_u16() as i64);
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(
+            serde_json::json!({
+                "number": number,
+                "result": fib
+            })
+            .to_string(),
+        )))
+        .unwrap())
+}
+
+async fn httpbin(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+    // create a client span as child of the current request span
+    let client_span = info_span!(
+        "http.client",
+        otel.name = "GET https://httpbin.org/anything",
+        otel.kind = "client",
+        http.request.method = "GET",
+        url.full = "https://httpbin.org/anything"
+    );
+
+    async move {
+        let mut outbound_headers = hyper::header::HeaderMap::new();
+        global::get_text_map_propagator(|prop| {
+            // inject current span context so downstream services can join this trace
+            prop.inject_context(
+                &Span::current().context(),
+                &mut HeaderInjector(&mut outbound_headers),
+            );
+        });
+
+        let traceparent = outbound_headers
+            .get("traceparent")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+
+        let client = reqwest::Client::new();
+        let upstream = client
+            .get("https://httpbin.org/anything")
+            .headers(outbound_headers.clone())
+            .send()
+            .await;
+
+        match upstream {
+            Ok(resp) => {
+                let upstream_status = resp.status();
+                let upstream_body = resp.text().await.unwrap_or_default();
+                let upstream_json = serde_json::from_str::<serde_json::Value>(&upstream_body)
+                    .unwrap_or_else(|_| serde_json::json!({ "raw": upstream_body }));
+
+                Span::current()
+                    .set_attribute(HTTP_RESPONSE_STATUS_CODE, upstream_status.as_u16() as i64);
+                info!(
+                    http.response.status_code = upstream_status.as_u16(),
+                    "httpbin request succeeded"
+                );
+
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
+                            "note": "This endpoint calls https://httpbin.org/anything with propagated trace context.",
+                            "propagated": {
+                                "traceparent": traceparent
+                            },
+                            "httpbin": upstream_json
+                        })
+                        .to_string(),
+                    )))
+                    .unwrap())
+            }
+            Err(err) => {
+                let error_message = err.to_string();
+                Span::current().set_status(Status::error(error_message.clone()));
+                Span::current().set_attribute(
+                    HTTP_RESPONSE_STATUS_CODE,
+                    StatusCode::SERVICE_UNAVAILABLE.as_u16() as i64,
+                );
+                error!(error.message = %error_message, "httpbin request failed");
+
+                Ok(Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
+                            "error": error_message
+                        })
+                        .to_string(),
+                    )))
+                    .unwrap())
+            }
+        }
+    }
+    .instrument(client_span)
+    .await
+}
+
+fn init_tracer_provider() -> SdkTracerProvider {
     // set the propagator to be used for extracting and injecting trace context; extraction and injection won't work
     // unless propagators are defined globally first
     global::set_text_map_propagator(opentelemetry::propagation::TextMapCompositePropagator::new(
@@ -406,7 +288,7 @@ fn init_tracer_provider() {
     //     .build()
     //     .unwrap();
 
-    // * use the HTTP exporter when targeting a cloud backend or a collector behind a proxy
+    // use HTTP exporter when targeting cloud backends or collectors behind a proxy
     let otlp_endpoint = format!("{}/v1/traces", *OTLP_ENDPOINT);
     let otlp_exporter = OtlpSpanExporter::builder()
         .with_http()
@@ -417,16 +299,20 @@ fn init_tracer_provider() {
         .unwrap();
 
     let provider = SdkTracerProvider::builder()
-        // enable stdout exporter for debugging
-        // .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
         .with_batch_exporter(otlp_exporter)
         .build();
 
-    global::set_tracer_provider(provider);
+    global::set_tracer_provider(provider.clone());
+    provider
 }
 
 fn init_meter_provider() {
     let otlp_endpoint = format!("{}/v1/metrics", *OTLP_ENDPOINT);
+
+    // the reader object controls how often metrics are exported
+    // let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
+    //     .with_interval(Duration::from_secs(5))
+    //     .build();
 
     let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
@@ -436,12 +322,8 @@ fn init_meter_provider() {
         .build()
         .expect("Failed to create OTLP exporter");
 
-    // the reader object controls how often metrics are exported
-    // let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
-    //     .with_interval(Duration::from_secs(5))
-    //     .build();
+    // the interval should be high enough to avoid overloading the backend but low enough for accurate analysis
     let otlp_reader = PeriodicReader::builder(otlp_exporter)
-        // this should be high enough to avoid overloading the backend but low enough for accurate analysis
         .with_interval(Duration::from_secs(30))
         .build();
 
@@ -450,7 +332,6 @@ fn init_meter_provider() {
         // .with_reader(stdout_reader)
         .with_reader(otlp_reader)
         .build();
-
     global::set_meter_provider(provider);
 }
 
@@ -471,11 +352,11 @@ fn init_logger_provider() {
         .with_log_processor(BatchLogProcessor::builder(otlp_exporter).build())
         .build();
 
-    // since we don't have global::logger function to manage the global logger provider, we store it via OnceLock
+    // store the provider in a OnceLock as there is no global logger setter API equivalent to tracer/meter globals
     let _ = LOGGER_PROVIDER.set(provider);
 }
 
-fn init_tracing_subscriber() {
+fn init_tracing_subscriber(tracer: SdkTracer) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::new(
             "info,opentelemetry_rust_demo=debug,opentelemetry_sdk=warn,opentelemetry_otlp=warn,opentelemetry_http=warn,reqwest=warn,hyper_util=warn,hyper=warn,h2=warn,tonic=warn",
@@ -484,22 +365,107 @@ fn init_tracing_subscriber() {
     let logger_provider = LOGGER_PROVIDER
         .get()
         .expect("logger provider should be initialized before tracing subscriber");
+    // bridge tracing events -> OTel logs
     let otel_log_layer = OpenTelemetryTracingBridge::new(logger_provider);
+    // bridge tracing spans -> OTel traces
+    let otel_span_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     tracing_subscriber::registry()
         .with(filter)
         .with(tracing_subscriber::fmt::layer())
+        .with(otel_span_layer)
         .with(otel_log_layer)
         .init();
 }
 
-// holds initialized metric instruments, created once and reused across all requests
-struct AppMetrics {
-    // tracks currently in-flight requests (incremented on arrival, decremented on completion)
-    active_requests: UpDownCounter<i64>,
-    // measures end-to-end HTTP request duration in milliseconds as a histogram
-    // enables percentiles (p50, p95, p99) based analysis in OpenTelemetry backends
-    request_duration: Histogram<f64>,
+async fn router(
+    request: Request<hyper::body::Incoming>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    // convert to owned Strings before request is moved into handlers below
+    let path = request.uri().path().to_string();
+    let method = request.method().to_string();
+
+    // extract incoming parent context from HTTP headers;
+    // start extraction from a fresh root context to avoid accidental inheritance
+    let parent_cx = global::get_text_map_propagator(|prop| {
+        prop.extract_with_context(
+            &opentelemetry::Context::new(),
+            &HeaderExtractor(request.headers()),
+        )
+    });
+    let span_name = format!("{} {}", method, path);
+    // use stable local tracing span name, and override exported OTel span name via `otel.name`
+    let request_span = info_span!(
+        "http.server",
+        otel.name = %span_name,
+        otel.kind = "server",
+        http.method = %method,
+        url.path = %path
+    );
+    let _ = request_span.set_parent(parent_cx);
+
+    // instrumenting the async block keeps span context active across all await points
+    async move {
+        debug!("received request");
+
+        Span::current().set_attribute(HTTP_REQUEST_METHOD, method.clone());
+        Span::current().set_attribute(URL_PATH, path.clone());
+
+        let method_kv = KeyValue::new(HTTP_REQUEST_METHOD, method.clone());
+        let path_kv = KeyValue::new(URL_PATH, path.clone());
+        // active_requests labels only use method+path because status is unknown at start
+        let inflight_attrs = [method_kv.clone(), path_kv.clone()];
+
+        // increment before handler runs to capture true in-flight requests
+        METRICS.active_requests.add(1, &inflight_attrs);
+        let start = Instant::now();
+
+        let result = match path.as_str() {
+            "/" => index(request).await,
+            "/fibonacci" => calculate_fibonacci(request).await,
+            "/external" => httpbin(request).await,
+            _ => {
+                tokio::time::sleep(Duration::from_millis(rand::random_range(50..100))).await;
+                Span::current().set_status(Status::error("Resource not found"));
+                Span::current().set_attribute(
+                    HTTP_RESPONSE_STATUS_CODE,
+                    StatusCode::NOT_FOUND.as_u16() as i64,
+                );
+                Span::current().set_attribute(URL_PATH, path.clone());
+                Span::current().set_attribute(HTTP_REQUEST_METHOD, method.clone());
+                error!("resource not found");
+
+                Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Full::new(Bytes::from("Resource not found")))
+                    .unwrap())
+            }
+        };
+
+        // decrement now that request handling is complete
+        METRICS.active_requests.add(-1, &inflight_attrs);
+
+        // record end-to-end request duration and final status
+        let status_code = result.as_ref().unwrap().status().as_u16() as i64;
+        let duration_secs = start.elapsed().as_secs_f64();
+        let completed_attrs = [
+            method_kv,
+            path_kv,
+            KeyValue::new(HTTP_RESPONSE_STATUS_CODE, status_code),
+        ];
+        METRICS
+            .request_duration
+            .record(duration_secs, &completed_attrs);
+
+        Span::current().set_attribute(HTTP_RESPONSE_STATUS_CODE, status_code);
+        if status_code >= 500 {
+            Span::current().set_status(Status::error(format!("HTTP {}", status_code)));
+        }
+
+        result
+    }
+    .instrument(request_span)
+    .await
 }
 
 #[tokio::main]
@@ -507,21 +473,20 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 8085));
     let listener = TcpListener::bind(&addr).await.unwrap();
 
-    init_tracer_provider();
+    let tracer_provider = init_tracer_provider();
+    let tracing_layer_tracer = tracer_provider.tracer("opentelemetry-rust-demo");
     init_logger_provider();
     init_meter_provider();
-    init_tracing_subscriber();
+    init_tracing_subscriber(tracing_layer_tracer);
 
     info!(server.address = %addr, "OpenTelemetry Rust Demo app: starting up");
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
+        // adapt tokio IO traits to hyper runtime IO traits
         let io = TokioIo::new(stream);
 
-        // Spawn a tokio task to serve multiple connections concurrently
+        // serve each connection concurrently
         tokio::spawn(async move {
             if let Err(err) = http1::Builder::new()
                 .serve_connection(io, service_fn(router))

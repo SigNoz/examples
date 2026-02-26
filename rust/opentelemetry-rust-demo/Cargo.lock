@@ -859,6 +859,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
 ]
