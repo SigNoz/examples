@@ -19,7 +19,7 @@ use opentelemetry::trace::{Status, TracerProvider as _};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{
     LogExporter as OtlpLogExporter, SpanExporter as OtlpSpanExporter, WithExportConfig,
-    WithHttpConfig,
+    WithTonicConfig,
 };
 use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider, SimpleLogProcessor};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
@@ -33,6 +33,8 @@ use opentelemetry_semantic_conventions::metric::{
 };
 use opentelemetry_stdout;
 use tokio::net::TcpListener;
+use tonic::metadata::{MetadataMap, MetadataValue};
+use tonic::transport::ClientTlsConfig;
 use tracing::{Instrument, Span, debug, error, info, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{EnvFilter, prelude::*};
@@ -113,6 +115,16 @@ lazy_static! {
                 .build(),
         }
     };
+}
+
+fn signoz_tonic_metadata() -> MetadataMap {
+    let mut metadata = MetadataMap::new();
+    if let Some(ingestion_key) = SIGNOZ_HEADERS.get("signoz-ingestion-key") {
+        if let Ok(metadata_value) = MetadataValue::try_from(ingestion_key.as_str()) {
+            metadata.insert("signoz-ingestion-key", metadata_value);
+        }
+    }
+    metadata
 }
 
 fn fibonacci(n: u8) -> u128 {
@@ -282,19 +294,14 @@ fn init_tracer_provider() -> SdkTracerProvider {
         vec![Box::new(TraceContextPropagator::new())],
     ));
 
-    // * feel free to use the gRPC exporter if using a local collector instance
-    // let otlp_exporter = OtlpSpanExporter::builder()
-    //     .with_tonic()
-    //     .build()
-    //     .unwrap();
-
-    // use HTTP exporter when targeting cloud backends or collectors behind a proxy
-    let otlp_endpoint = format!("{}/v1/traces", *OTLP_ENDPOINT);
+    // use gRPC exporter with TLS and metadata headers for SigNoz cloud
+    let otlp_endpoint = OTLP_ENDPOINT.clone();
     let otlp_exporter = OtlpSpanExporter::builder()
-        .with_http()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_tonic()
+        .with_protocol(opentelemetry_otlp::Protocol::Grpc)
         .with_endpoint(otlp_endpoint)
-        .with_headers(SIGNOZ_HEADERS.clone())
+        .with_tls_config(ClientTlsConfig::new().with_native_roots())
+        .with_metadata(signoz_tonic_metadata())
         .build()
         .unwrap();
 
@@ -307,7 +314,7 @@ fn init_tracer_provider() -> SdkTracerProvider {
 }
 
 fn init_meter_provider() {
-    let otlp_endpoint = format!("{}/v1/metrics", *OTLP_ENDPOINT);
+    let otlp_endpoint = OTLP_ENDPOINT.clone();
 
     // the reader object controls how often metrics are exported
     // let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
@@ -315,10 +322,11 @@ fn init_meter_provider() {
     //     .build();
 
     let otlp_exporter = opentelemetry_otlp::MetricExporter::builder()
-        .with_http()
+        .with_tonic()
+        .with_protocol(opentelemetry_otlp::Protocol::Grpc)
         .with_endpoint(otlp_endpoint)
-        .with_headers(SIGNOZ_HEADERS.clone())
-        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_tls_config(ClientTlsConfig::new().with_native_roots())
+        .with_metadata(signoz_tonic_metadata())
         .build()
         .expect("Failed to create OTLP exporter");
 
@@ -336,12 +344,13 @@ fn init_meter_provider() {
 }
 
 fn init_logger_provider() {
-    let otlp_endpoint = format!("{}/v1/logs", *OTLP_ENDPOINT);
+    let otlp_endpoint = OTLP_ENDPOINT.clone();
     let otlp_exporter = OtlpLogExporter::builder()
-        .with_http()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_tonic()
+        .with_protocol(opentelemetry_otlp::Protocol::Grpc)
         .with_endpoint(otlp_endpoint)
-        .with_headers(SIGNOZ_HEADERS.clone())
+        .with_tls_config(ClientTlsConfig::new().with_native_roots())
+        .with_metadata(signoz_tonic_metadata())
         .build()
         .unwrap();
 

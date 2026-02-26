@@ -25,6 +25,7 @@ opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = [
     "grpc-tonic",
+    "tls-roots",
     "http-json",
     # * this is mandatory to export data directly to any deployed backend not in local network!
     "reqwest-rustls",
@@ -37,3 +38,6 @@ opentelemetry-appender-tracing = "0.31"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.32"
+tonic = { version = "0.14", default-features = false, features = [
+    "tls-native-roots",
+] }
