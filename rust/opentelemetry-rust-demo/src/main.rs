@@ -14,24 +14,22 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use opentelemetry::KeyValue;
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
-use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider, Severity};
 use opentelemetry::metrics::{Histogram, UpDownCounter};
 use opentelemetry::propagation::{Extractor, Injector};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{
     LogExporter as OtlpLogExporter, SpanExporter as OtlpSpanExporter, WithExportConfig,
     WithHttpConfig, WithTonicConfig,
 };
-use opentelemetry_sdk::logs::{
-    BatchLogProcessor, SdkLogger, SdkLoggerProvider, SimpleLogProcessor,
-};
+use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider, SimpleLogProcessor};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
-    ERROR_MESSAGE, ERROR_TYPE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
+    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
 };
 use opentelemetry_semantic_conventions::metric::{
     HTTP_SERVER_ACTIVE_REQUESTS, HTTP_SERVER_REQUEST_DURATION,
@@ -39,23 +37,12 @@ use opentelemetry_semantic_conventions::metric::{
 use opentelemetry_stdout;
 use serde;
 use tokio::net::TcpListener;
+use tracing::{debug, error, info, info_span};
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 // we must maintain explicit OnceLock instance because `opentelemetry::global` doesn't expose trace/metric
 // equivalent global logger handler
 static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
-
-fn emit_log(
-    message: impl Into<String>,
-    attributes: impl IntoIterator<Item = (&'static str, AnyValue)>,
-    level: Severity,
-) {
-    let mut record = LOGGER.create_log_record();
-    record.set_severity_number(level);
-    record.set_severity_text(level.name());
-    record.set_body(AnyValue::String(message.into().into()));
-    record.add_attributes(attributes);
-    LOGGER.emit(record);
-}
 
 // adapts Hyper headers to OTel propagation so we can extract `traceparent`from inbound requests
 struct HeaderExtractor<'a>(&'a hyper::header::HeaderMap);
@@ -95,7 +82,7 @@ fn fibonacci(n: u8) -> u128 {
 }
 
 async fn index(
-    r: Request<hyper::body::Incoming>,
+    _: Request<hyper::body::Incoming>,
     span: &mut BoxedSpan,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     span.set_attribute(KeyValue::new(
@@ -137,13 +124,10 @@ async fn calculate_fibonacci(
                 StatusCode::UNPROCESSABLE_ENTITY.as_u16() as i64,
             ));
 
-            emit_log(
-                format!("error parsing Fibonacci payload"),
-                [
-                    (ERROR_MESSAGE, error_message.clone().into()),
-                    (ERROR_TYPE, "Invalid Input".into()),
-                ],
-                Severity::Error,
+            error!(
+                error.message = %error_message,
+                error.type = "Invalid Input",
+                "error parsing fibonacci payload"
             );
             return Ok(Response::builder()
                 .status(StatusCode::UNPROCESSABLE_ENTITY)
@@ -192,14 +176,9 @@ async fn router(
     let path = request.uri().path().to_string();
     let method = request.method().to_string();
 
-    emit_log(
-        "received request".to_string(),
-        [
-            ("http.method", AnyValue::String(method.clone().into())),
-            ("url.path", AnyValue::String(path.clone().into())),
-        ],
-        Severity::Debug,
-    );
+    let request_span = info_span!("http.request", http.method = %method, url.path = %path);
+    let _request_span_guard = request_span.enter();
+    debug!("received request");
 
     // parse incoming trace headers into a Context so the server span continues the caller's trace (if present)
     let parent_cx =
@@ -239,14 +218,7 @@ async fn router(
                 StatusCode::NOT_FOUND.as_u16() as i64,
             ));
 
-            emit_log(
-                "Resource not found".to_string(),
-                [
-                    ("http.method", AnyValue::String(method.clone().into())),
-                    ("url.path", AnyValue::String(path.clone().into())),
-                ],
-                Severity::Error,
-            );
+            error!("resource not found");
 
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -330,6 +302,10 @@ async fn httpbin(
                 HTTP_RESPONSE_STATUS_CODE,
                 StatusCode::OK.as_u16() as i64,
             ));
+            info!(
+                http.response.status_code = upstream_status.as_u16(),
+                "httpbin request succeeded"
+            );
 
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -359,6 +335,7 @@ async fn httpbin(
                 HTTP_RESPONSE_STATUS_CODE,
                 StatusCode::BAD_GATEWAY.as_u16() as i64,
             ));
+            error!(error.message = %error_message, "httpbin request failed");
 
             Ok(Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
@@ -414,8 +391,6 @@ lazy_static! {
 
     // we create spans using the tracer object in request handlers
     static ref TRACER: BoxedTracer = global::tracer("opentelemetry-rust-demo");
-    // initialize the global logger via the "locked" provider value
-    static ref LOGGER: SdkLogger = LOGGER_PROVIDER.get().unwrap().logger("opentelemetry-rust-demo");
 }
 
 fn init_tracer_provider() {
@@ -462,9 +437,9 @@ fn init_meter_provider() {
         .expect("Failed to create OTLP exporter");
 
     // the reader object controls how often metrics are exported
-    let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
-        .with_interval(Duration::from_secs(5))
-        .build();
+    // let stdout_reader = PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default())
+    //     .with_interval(Duration::from_secs(5))
+    //     .build();
     let otlp_reader = PeriodicReader::builder(otlp_exporter)
         // this should be high enough to avoid overloading the backend but low enough for accurate analysis
         .with_interval(Duration::from_secs(30))
@@ -500,6 +475,24 @@ fn init_logger_provider() {
     let _ = LOGGER_PROVIDER.set(provider);
 }
 
+fn init_tracing_subscriber() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new(
+            "info,opentelemetry_rust_demo=debug,opentelemetry_sdk=warn,opentelemetry_otlp=warn,opentelemetry_http=warn,reqwest=warn,hyper_util=warn,hyper=warn,h2=warn,tonic=warn",
+        )
+    });
+    let logger_provider = LOGGER_PROVIDER
+        .get()
+        .expect("logger provider should be initialized before tracing subscriber");
+    let otel_log_layer = OpenTelemetryTracingBridge::new(logger_provider);
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .with(otel_log_layer)
+        .init();
+}
+
 // holds initialized metric instruments, created once and reused across all requests
 struct AppMetrics {
     // tracks currently in-flight requests (incremented on arrival, decremented on completion)
@@ -517,12 +510,9 @@ async fn main() {
     init_tracer_provider();
     init_logger_provider();
     init_meter_provider();
+    init_tracing_subscriber();
 
-    emit_log(
-        format!("listening on http://{addr}"),
-        [("server.address", AnyValue::String(addr.to_string().into()))],
-        Severity::Info,
-    );
+    info!(server.address = %addr, "OpenTelemetry Rust Demo app: starting up");
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
@@ -537,7 +527,7 @@ async fn main() {
                 .serve_connection(io, service_fn(router))
                 .await
             {
-                eprintln!("Error serving connection {:?}", err);
+                error!(error.message = ?err, "error serving connection");
             }
         });
     }
