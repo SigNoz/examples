@@ -198,7 +198,7 @@ async fn router(
             ("http.method", AnyValue::String(method.clone().into())),
             ("url.path", AnyValue::String(path.clone().into())),
         ],
-        Severity::Info,
+        Severity::Debug,
     );
 
     // parse incoming trace headers into a Context so the server span continues the caller's trace (if present)
