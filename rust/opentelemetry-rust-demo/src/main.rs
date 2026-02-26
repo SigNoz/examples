@@ -40,24 +40,21 @@ use opentelemetry_stdout;
 use serde;
 use tokio::net::TcpListener;
 
+// we must maintain explicit OnceLock instance because `opentelemetry::global` doesn't expose trace/metric
+// equivalent global logger handler
 static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
-static LOGGER: OnceLock<SdkLogger> = OnceLock::new();
 
 fn emit_log(
     message: impl Into<String>,
     attributes: impl IntoIterator<Item = (&'static str, AnyValue)>,
     level: Severity,
 ) {
-    let Some(logger) = LOGGER.get() else {
-        return;
-    };
-
-    let mut record = logger.create_log_record();
+    let mut record = LOGGER.create_log_record();
     record.set_severity_number(level);
     record.set_severity_text(level.name());
     record.set_body(AnyValue::String(message.into().into()));
     record.add_attributes(attributes);
-    logger.emit(record);
+    LOGGER.emit(record);
 }
 
 // adapts Hyper headers to OTel propagation so we can extract `traceparent`from inbound requests
@@ -378,6 +375,8 @@ async fn httpbin(
 }
 
 // initialize global variables to keep duplication to a minimum
+// these will be initialized when called, and reused thereafter throughout the application, guaranteeing that
+// metrics and tracer objects initialize AFTER the corresponding pipelines have been setup
 lazy_static! {
     static ref SIGNOZ_HEADERS: HashMap<String, String> = {
         let mut headers = HashMap::new();
@@ -388,6 +387,8 @@ lazy_static! {
     };
     static ref OTLP_ENDPOINT: String =
         std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
+
+    // we don't need meter for future use in our case, since we'll directly use the instruments created via the meter
     static ref METRICS: AppMetrics = {
         let meter = global::meter("opentelemetry-rust-demo");
         AppMetrics {
@@ -410,7 +411,11 @@ lazy_static! {
                 .build(),
         }
     };
+
+    // we create spans using the tracer object in request handlers
     static ref TRACER: BoxedTracer = global::tracer("opentelemetry-rust-demo");
+    // initialize the global logger via the "locked" provider value
+    static ref LOGGER: SdkLogger = LOGGER_PROVIDER.get().unwrap().logger("opentelemetry-rust-demo");
 }
 
 fn init_tracer_provider() {
@@ -445,28 +450,6 @@ fn init_tracer_provider() {
     global::set_tracer_provider(provider);
 }
 
-fn init_logger_provider() {
-    let otlp_endpoint = format!("{}/v1/logs", *OTLP_ENDPOINT);
-    let otlp_exporter = OtlpLogExporter::builder()
-        .with_http()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
-        .with_endpoint(otlp_endpoint)
-        .with_headers(SIGNOZ_HEADERS.clone())
-        .build()
-        .unwrap();
-
-    let provider = SdkLoggerProvider::builder()
-        .with_log_processor(SimpleLogProcessor::new(
-            opentelemetry_stdout::LogExporter::default(),
-        ))
-        .with_log_processor(BatchLogProcessor::builder(otlp_exporter).build())
-        .build();
-
-    let logger = provider.logger("opentelemetry-rust-demo");
-    let _ = LOGGER_PROVIDER.set(provider);
-    let _ = LOGGER.set(logger);
-}
-
 fn init_meter_provider() {
     let otlp_endpoint = format!("{}/v1/metrics", *OTLP_ENDPOINT);
 
@@ -494,6 +477,27 @@ fn init_meter_provider() {
         .build();
 
     global::set_meter_provider(provider);
+}
+
+fn init_logger_provider() {
+    let otlp_endpoint = format!("{}/v1/logs", *OTLP_ENDPOINT);
+    let otlp_exporter = OtlpLogExporter::builder()
+        .with_http()
+        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_endpoint(otlp_endpoint)
+        .with_headers(SIGNOZ_HEADERS.clone())
+        .build()
+        .unwrap();
+
+    let provider = SdkLoggerProvider::builder()
+        .with_log_processor(SimpleLogProcessor::new(
+            opentelemetry_stdout::LogExporter::default(),
+        ))
+        .with_log_processor(BatchLogProcessor::builder(otlp_exporter).build())
+        .build();
+
+    // since we don't have global::logger function to manage the global logger provider, we store it via OnceLock
+    let _ = LOGGER_PROVIDER.set(provider);
 }
 
 // holds initialized metric instruments, created once and reused across all requests
