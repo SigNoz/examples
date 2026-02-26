@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use http_body_util::{BodyExt, Full};
@@ -13,19 +14,24 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use opentelemetry::KeyValue;
 use opentelemetry::global::{self, BoxedSpan, BoxedTracer};
+use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider, Severity};
 use opentelemetry::metrics::{Histogram, UpDownCounter};
 use opentelemetry::propagation::{Extractor, Injector};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry::trace::{Span, SpanKind, Status, Tracer};
 use opentelemetry_otlp::{
-    SpanExporter as OtlpSpanExporter, WithExportConfig, WithHttpConfig, WithTonicConfig,
+    LogExporter as OtlpLogExporter, SpanExporter as OtlpSpanExporter, WithExportConfig,
+    WithHttpConfig, WithTonicConfig,
+};
+use opentelemetry_sdk::logs::{
+    BatchLogProcessor, SdkLogger, SdkLoggerProvider, SimpleLogProcessor,
 };
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
-    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
+    ERROR_MESSAGE, ERROR_TYPE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, URL_PATH,
 };
 use opentelemetry_semantic_conventions::metric::{
     HTTP_SERVER_ACTIVE_REQUESTS, HTTP_SERVER_REQUEST_DURATION,
@@ -33,6 +39,26 @@ use opentelemetry_semantic_conventions::metric::{
 use opentelemetry_stdout;
 use serde;
 use tokio::net::TcpListener;
+
+static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
+static LOGGER: OnceLock<SdkLogger> = OnceLock::new();
+
+fn emit_log(
+    message: impl Into<String>,
+    attributes: impl IntoIterator<Item = (&'static str, AnyValue)>,
+    level: Severity,
+) {
+    let Some(logger) = LOGGER.get() else {
+        return;
+    };
+
+    let mut record = logger.create_log_record();
+    record.set_severity_number(level);
+    record.set_severity_text(level.name());
+    record.set_body(AnyValue::String(message.into().into()));
+    record.add_attributes(attributes);
+    logger.emit(record);
+}
 
 // adapts Hyper headers to OTel propagation so we can extract `traceparent`from inbound requests
 struct HeaderExtractor<'a>(&'a hyper::header::HeaderMap);
@@ -102,18 +128,26 @@ async fn calculate_fibonacci(
         Ok(data) => data,
         Err(err) => {
             let error_message = err.to_string();
-
             let error_payload = serde_json::json!({
                 "error": error_message
             });
+
             span.set_status(Status::Error {
-                description: error_message.into(),
+                description: error_message.clone().into(),
             });
             span.set_attribute(KeyValue::new(
                 HTTP_RESPONSE_STATUS_CODE,
                 StatusCode::UNPROCESSABLE_ENTITY.as_u16() as i64,
             ));
 
+            emit_log(
+                format!("error parsing Fibonacci payload"),
+                [
+                    (ERROR_MESSAGE, error_message.clone().into()),
+                    (ERROR_TYPE, "Invalid Input".into()),
+                ],
+                Severity::Error,
+            );
             return Ok(Response::builder()
                 .status(StatusCode::UNPROCESSABLE_ENTITY)
                 .header("Content-Type", "application/json")
@@ -161,7 +195,14 @@ async fn router(
     let path = request.uri().path().to_string();
     let method = request.method().to_string();
 
-    println!("router: received request for {}", path);
+    emit_log(
+        "received request".to_string(),
+        [
+            ("http.method", AnyValue::String(method.clone().into())),
+            ("url.path", AnyValue::String(path.clone().into())),
+        ],
+        Severity::Info,
+    );
 
     // parse incoming trace headers into a Context so the server span continues the caller's trace (if present)
     let parent_cx =
@@ -200,6 +241,16 @@ async fn router(
                 HTTP_RESPONSE_STATUS_CODE,
                 StatusCode::NOT_FOUND.as_u16() as i64,
             ));
+
+            emit_log(
+                "Resource not found".to_string(),
+                [
+                    ("http.method", AnyValue::String(method.clone().into())),
+                    ("url.path", AnyValue::String(path.clone().into())),
+                ],
+                Severity::Error,
+            );
+
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Full::new(Bytes::from("Resource not found")))
@@ -394,6 +445,28 @@ fn init_tracer_provider() {
     global::set_tracer_provider(provider);
 }
 
+fn init_logger_provider() {
+    let otlp_endpoint = format!("{}/v1/logs", *OTLP_ENDPOINT);
+    let otlp_exporter = OtlpLogExporter::builder()
+        .with_http()
+        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_endpoint(otlp_endpoint)
+        .with_headers(SIGNOZ_HEADERS.clone())
+        .build()
+        .unwrap();
+
+    let provider = SdkLoggerProvider::builder()
+        .with_log_processor(SimpleLogProcessor::new(
+            opentelemetry_stdout::LogExporter::default(),
+        ))
+        .with_log_processor(BatchLogProcessor::builder(otlp_exporter).build())
+        .build();
+
+    let logger = provider.logger("opentelemetry-rust-demo");
+    let _ = LOGGER_PROVIDER.set(provider);
+    let _ = LOGGER.set(logger);
+}
+
 fn init_meter_provider() {
     let otlp_endpoint = format!("{}/v1/metrics", *OTLP_ENDPOINT);
 
@@ -437,9 +510,15 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 8085));
     let listener = TcpListener::bind(&addr).await.unwrap();
 
-    println!("Listening on http://{}", addr);
     init_tracer_provider();
+    init_logger_provider();
     init_meter_provider();
+
+    emit_log(
+        format!("listening on http://{addr}"),
+        [("server.address", AnyValue::String(addr.to_string().into()))],
+        Severity::Info,
+    );
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
