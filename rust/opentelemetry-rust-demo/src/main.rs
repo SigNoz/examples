@@ -366,11 +366,10 @@ fn init_logger_provider() {
 }
 
 fn init_tracing_subscriber(tracer: SdkTracer) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(
-            "info,opentelemetry_rust_demo=debug,opentelemetry_sdk=warn,opentelemetry_otlp=warn,opentelemetry_http=warn,reqwest=warn,hyper_util=warn,hyper=warn,h2=warn,tonic=warn",
-        )
-    });
+    // filter noisy logs from dependencies
+    let filter = EnvFilter::new(
+        "info,opentelemetry_rust_demo=debug,opentelemetry_sdk=warn,opentelemetry_otlp=warn,opentelemetry_http=warn,reqwest=warn,hyper_util=warn,hyper=warn,h2=warn,tonic=warn",
+    );
     let logger_provider = LOGGER_PROVIDER
         .get()
         .expect("logger provider should be initialized before tracing subscriber");
