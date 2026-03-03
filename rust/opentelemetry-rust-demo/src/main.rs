@@ -87,11 +87,13 @@ lazy_static! {
         let mut headers = HashMap::new();
         if let Ok(key) = std::env::var("SIGNOZ_INGESTION_KEY") {
             headers.insert("signoz-ingestion-key".to_string(), key);
+        } else {
+            panic!("SIGNOZ_INGESTION_KEY not set");
         }
         headers
     };
     static ref OTLP_ENDPOINT: String =
-        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_default();
+        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").expect("OTEL_EXPORTER_OTLP_ENDPOINT not set");
 
     // we don't need a global meter handle later because we'll reuse instruments directly
     static ref METRICS: AppMetrics = {

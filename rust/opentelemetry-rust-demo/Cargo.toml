@@ -25,10 +25,8 @@ opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = [
     "grpc-tonic",
+    # to send data to secure endpoints over gRPC
     "tls-roots",
-    "http-json",
-    # * this is mandatory to export data directly to any deployed backend not in local network!
-    "reqwest-rustls",
 ] }
 opentelemetry-stdout = { version = "0.31" }
 opentelemetry-semantic-conventions = { version = "0.31", features = [
