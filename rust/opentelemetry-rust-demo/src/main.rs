@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -308,6 +309,8 @@ fn init_tracer_provider() -> SdkTracerProvider {
         .unwrap();
 
     let provider = SdkTracerProvider::builder()
+        // * enable the console exporter for debugging
+        // .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
         .with_batch_exporter(otlp_exporter)
         .build();
 
@@ -338,7 +341,7 @@ fn init_meter_provider() {
         .build();
 
     let provider = SdkMeterProvider::builder()
-        // enable stdout reader for debugging
+        // * enable stdout reader for debugging
         // .with_reader(stdout_reader)
         .with_reader(otlp_reader)
         .build();
@@ -357,9 +360,10 @@ fn init_logger_provider() {
         .unwrap();
 
     let provider = SdkLoggerProvider::builder()
-        .with_log_processor(SimpleLogProcessor::new(
-            opentelemetry_stdout::LogExporter::default(),
-        ))
+        // * enable the console log processor for debugging
+        // .with_log_processor(SimpleLogProcessor::new(
+        //     opentelemetry_stdout::LogExporter::default(),
+        // ))
         .with_log_processor(BatchLogProcessor::builder(otlp_exporter).build())
         .build();
 
