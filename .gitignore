@@ -11,3 +11,6 @@ opentelemetry-collector/otelcol-contrib-demo/builder/ocb
 # NodeJS
 node_modules/
 nodejs/**/dist/
+
+# Rust
+target/
