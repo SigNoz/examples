@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.11</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.signoz</groupId>
+    <artifactId>opentelemetry-spring-boot-demo</artifactId>
+    <version>0.1.0</version>
+    <name>OpenTelemetry Spring Boot Demo</name>
+    <description>
+        Spring Boot demo instrumented with the OpenTelemetry Java Agent (auto-instrumentation)
+        plus manual @WithSpan annotations and OTel API calls for business logic.
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+        <!-- OTel Java Agent version: download separately, see scripts/download_agent.sh -->
+        <otel.agent.version>2.26.0</otel.agent.version>
+        <!--
+            opentelemetry-api and opentelemetry-instrumentation-annotations are compile-time only.
+            The agent relocates its own internal SDK copy, so there is no classpath conflict.
+            Pin these to match the SDK bundled inside the agent (1.47.0).
+        -->
+        <opentelemetry.version>1.47.0</opentelemetry.version>
+        <opentelemetry.instrumentation.version>2.26.0</opentelemetry.instrumentation.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+                Import the OTel instrumentation BOM BEFORE Spring Boot managed deps.
+                This ensures the OTel SDK and annotation versions are correctly aligned.
+                See: https://opentelemetry.io/docs/zero-code/java/spring-boot-starter/
+            -->
+            <dependency>
+                <groupId>io.opentelemetry.instrumentation</groupId>
+                <artifactId>opentelemetry-instrumentation-bom</artifactId>
+                <version>${opentelemetry.instrumentation.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Spring Web (Spring MVC, Tomcat) — auto-instrumented by the agent -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!--
+            OTel API: compile-time dep for manual span enrichment and custom metrics.
+            The agent provides a GlobalOpenTelemetry singleton at runtime that these calls attach to.
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>${opentelemetry.version}</version>
+        </dependency>
+
+        <!--
+            Provides the @WithSpan annotation and @SpanAttribute.
+            The agent's built-in annotation instrumentation picks these up automatically —
+            no extra configuration needed.
+        -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-annotations</artifactId>
+            <version>${opentelemetry.instrumentation.version}</version>
+		</dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
