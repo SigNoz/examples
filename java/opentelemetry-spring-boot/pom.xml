@@ -36,11 +36,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!--
-                Import the OTel instrumentation BOM BEFORE Spring Boot managed deps.
-                This ensures the OTel SDK and annotation versions are correctly aligned.
-                See: https://opentelemetry.io/docs/zero-code/java/spring-boot-starter/
-            -->
             <dependency>
                 <groupId>io.opentelemetry.instrumentation</groupId>
                 <artifactId>opentelemetry-instrumentation-bom</artifactId>

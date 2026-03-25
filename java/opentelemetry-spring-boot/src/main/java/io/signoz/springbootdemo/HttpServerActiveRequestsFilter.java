@@ -4,22 +4,18 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
 @Component
-@ConditionalOnProperty(
-        name = "demo.metrics.manual-http-server-active-requests.enabled",
-        havingValue = "true")
-public class ManualHttpServerActiveRequestsFilter extends OncePerRequestFilter {
+public class HttpServerActiveRequestsFilter extends OncePerRequestFilter {
 
-    private final ManualHttpServerActiveRequestsMetrics metrics;
+    private final MetricsService metricsService;
 
-    public ManualHttpServerActiveRequestsFilter(ManualHttpServerActiveRequestsMetrics metrics) {
-        this.metrics = metrics;
+    public HttpServerActiveRequestsFilter(MetricsService metricsService) {
+        this.metricsService = metricsService;
     }
 
     @Override
@@ -31,11 +27,11 @@ public class ManualHttpServerActiveRequestsFilter extends OncePerRequestFilter {
             path = "/";
         }
 
-        metrics.increment(request.getMethod(), path);
+        metricsService.incrementActiveRequests(request.getMethod(), path);
         try {
             filterChain.doFilter(request, response);
         } finally {
-            metrics.decrement(request.getMethod(), path);
+            metricsService.decrementActiveRequests(request.getMethod(), path);
         }
     }
 }

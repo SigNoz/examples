@@ -1,8 +1,11 @@
 package io.signoz.springbootdemo;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.api.metrics.LongUpDownCounter;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +25,11 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class MetricsService {
+        private static final AttributeKey<String> HTTP_REQUEST_METHOD = AttributeKey.stringKey("http.request.method");
+        private static final AttributeKey<String> URL_PATH = AttributeKey.stringKey("url.path");
+
         private DoubleHistogram requestDuration;
+        private LongUpDownCounter activeRequests;
 
         @PostConstruct
         public void init() {
@@ -41,10 +48,27 @@ public class MetricsService {
                                                 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0,
                                                 7.5, 10.0))
                                 .build();
+
+                activeRequests = meter.upDownCounterBuilder("http.server.active_requests")
+                                .setDescription("Number of active HTTP server requests")
+                                .setUnit("1")
+                                .build();
         }
 
         public void recordFibonacciDuration(double seconds, int number) {
-                requestDuration.record(seconds, io.opentelemetry.api.common.Attributes.of(
-                                io.opentelemetry.api.common.AttributeKey.longKey("fibonacci.number"), (long) number));
+                requestDuration.record(seconds, Attributes.of(
+                                AttributeKey.longKey("fibonacci.number"), (long) number));
+        }
+
+        public void incrementActiveRequests(String method, String path) {
+                activeRequests.add(1, Attributes.of(
+                                HTTP_REQUEST_METHOD, method,
+                                URL_PATH, path));
+        }
+
+        public void decrementActiveRequests(String method, String path) {
+                activeRequests.add(-1, Attributes.of(
+                                HTTP_REQUEST_METHOD, method,
+                                URL_PATH, path));
         }
 }
