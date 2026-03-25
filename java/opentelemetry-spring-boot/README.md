@@ -1,6 +1,6 @@
 # OpenTelemetry Spring Boot Demo
 
-Demonstrates OpenTelemetry instrumentation for a Spring Boot 3.3 application using:
+Demonstrates OpenTelemetry instrumentation for a Spring Boot 3.5 application using:
 - **OTel Java Agent** for zero-code auto-instrumentation (HTTP server spans, outbound HTTP client spans with W3C trace context propagation, log correlation)
 - **`@WithSpan` + `@SpanAttribute`** for business-logic span enrichment (fibonacci computation)
 - **OTel API** (`GlobalOpenTelemetry`) for custom metric implementation
@@ -8,10 +8,10 @@ Demonstrates OpenTelemetry instrumentation for a Spring Boot 3.3 application usi
 ## Stack
 
 - Runtime: Java 21
-- Framework: Spring Boot 3.3.x + Spring MVC (Tomcat)
-- OTel Agent: `opentelemetry-javaagent` 2.12.0
+- Framework: Spring Boot 3.5.x + Spring MVC (Tomcat)
+- OTel Agent: `opentelemetry-javaagent` 2.26.0
 - OTel API: `opentelemetry-api` 1.47.0
-- Annotations: `opentelemetry-instrumentation-annotations` 2.12.0
+- Annotations: `opentelemetry-instrumentation-annotations` 2.26.0
 - Build: Maven
 
 ## Prerequisites
@@ -39,6 +39,8 @@ Use them in this format:
 make download-agent
 
 # 2. Start the app
+# The Makefile enables experimental HTTP client/server telemetry on the Java agent,
+# including http.server.active_requests.
 OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.<region>.signoz.cloud:443" \
 SIGNOZ_INGESTION_KEY="<your-key>" \
 make run
@@ -51,8 +53,8 @@ The server starts on `http://localhost:8085`.
 In a separate terminal:
 
 ```bash
-chmod +x load_gen.sh
-./load_gen.sh
+chmod +x scripts/load_gen.sh
+./scripts/load_gen.sh
 ```
 
 This continuously generates traffic against `/`, `//`, and `/fibonacci` to produce traces, metrics, and logs until you stop it with `Ctrl-C`.
@@ -74,9 +76,8 @@ This continuously generates traffic against `/`, `//`, and `/fibonacci` to produ
 
 ### Metrics
 - `http.server.request.duration` — auto (agent)
-- `http.server.active_requests` — auto (agent)
-- `http.server.active_requests` — manual fallback implementation exists in code but is disabled by default
-- `app.fibonacci.duration` — custom histogram implementation exists in code but is not recorded by default
+- `http.server.active_requests` — auto (agent) when `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true`
+- `app.fibonacci.duration` — manual histogram recorded for `POST /fibonacci` by `FibonacciMetricsFilter`
 
 ### Logs
 Every SLF4J log line is automatically correlated with the active trace and span IDs by the agent. The console pattern also prints `trace_id` and `span_id` so correlation is visible locally.
@@ -92,8 +93,8 @@ Every SLF4J log line is automatically correlated with the active trace and span 
 | `fibonacci.number` input attribute | Manual — `@SpanAttribute` |
 | `fibonacci.result` output attribute | Manual — `Span.current().setAttribute(...)` |
 | `error.type` attribute on bad input | Manual — `Span.current().setAttribute(...)` |
-| `http.server.active_requests` fallback | Manual implementation available, disabled by default |
-| `app.fibonacci.duration` histogram | Manual implementation available, not recorded by default |
+| `http.server.active_requests` | Auto — emitted by the Java agent when `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true` |
+| `app.fibonacci.duration` histogram | Manual — recorded by `FibonacciMetricsFilter` through `MetricsService` for `POST /fibonacci` |
 
 ## Validation
 
@@ -123,7 +124,7 @@ curl http://localhost:8085/external
 
 - Resource attributes set: `service.name`, `service.version=0.1.0`, `deployment.environment=dev`
 - Context propagation: W3C TraceContext (enabled by default in the agent)
-- `demo.metrics.manual-http-server-active-requests.enabled=false` keeps the manual `http.server.active_requests` fallback implemented but disabled by default
-- `app.fibonacci.duration` is kept as a reference implementation in `MetricsService`, but the controller does not record it by default
+- The `run` target enables `OTEL_INSTRUMENTATION_HTTP_CLIENT_EMIT_EXPERIMENTAL_TELEMETRY=true` and `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true`
+- `app.fibonacci.duration` is a custom business metric recorded for `POST /fibonacci` with `http.request.method`, `http.response.status_code`, and `url.path` attributes
 - The agent JAR is gitignored; it lives in `agent/` and is downloaded by `make download-agent`
 - All OTel config is done via environment variables — nothing is hardcoded in the app

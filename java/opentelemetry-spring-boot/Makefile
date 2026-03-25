@@ -22,6 +22,8 @@ run: $(AGENT_JAR) ## Start the demo app with the OTel Java Agent attached
 	OTEL_RESOURCE_ATTRIBUTES="service.version=0.1.0,deployment.environment=dev" \
 	OTEL_METRIC_EXPORT_INTERVAL=10000 \
 	OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS=io.opentelemetry.instrumentation.resources.ProcessResourceProvider \
+	OTEL_INSTRUMENTATION_HTTP_CLIENT_EMIT_EXPERIMENTAL_TELEMETRY=true \
+	OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true \
 	mvn spring-boot:run \
 	  -Dspring-boot.run.jvmArguments="-javaagent:$(AGENT_JAR)"
 
