@@ -7,7 +7,7 @@ SLEEP_TIME="${SLEEP_TIME:-1}"
 while true; do
   echo "$(date +'%T') - Root: Sending 2 requests (timeout 2s)"
   curl -s --max-time 2 "${BASE_URL}/" > /dev/null &
-  curl -s --max-time 2 "${BASE_URL}//" > /dev/null &
+  curl -s --max-time 2 "${BASE_URL}/invalid" > /dev/null &
 
   VAL=$(( RANDOM % 21 ))
   echo "$(date +'%T') - Fibonacci: Sending request with n=$VAL"
