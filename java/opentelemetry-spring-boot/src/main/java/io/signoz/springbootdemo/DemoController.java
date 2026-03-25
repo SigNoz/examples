@@ -20,21 +20,6 @@ import org.springframework.web.client.RestClient;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Demo REST controller that mirrors the Rust demo's three endpoints:
- *
- * GET / - basic hello world; agent auto-instruments the HTTP span
- * POST /fibonacci - fibonacci computation; manual span enrichment via
- * FibonacciService
- * GET /external - outbound HTTP call to httpbin.org; agent propagates W3C
- * traceparent automatically
- *
- * The OTel Java Agent automatically creates parent server spans for every
- * request,
- * populating http.request.method, url.path, http.response.status_code semantic
- * conventions.
- * We only add attributes that are specific to our business logic.
- */
 @RestController
 public class DemoController {
     private static final Logger log = LoggerFactory.getLogger(DemoController.class);
@@ -52,21 +37,13 @@ public class DemoController {
         this.objectMapper = objectMapper;
     }
 
-    // -------------------------------------------------------------------------
-    // GET /
-    // -------------------------------------------------------------------------
-
     @GetMapping("/")
     public ResponseEntity<String> index() {
         log.info("Handling GET /");
         return ResponseEntity.ok("Hello, World!");
     }
 
-    // -------------------------------------------------------------------------
-    // POST /fibonacci
-    // Body: { "number": <int> }
-    // -------------------------------------------------------------------------
-
+    // define the input constraints for the fibonacci request
     record FibonacciRequest(
             @NotNull(message = "missing required field: number") @Min(value = 0, message = "number must be between 0 and 92") @Max(value = 92, message = "number must be between 0 and 92") Integer number) {
     }
@@ -77,13 +54,13 @@ public class DemoController {
     @PostMapping(value = "/fibonacci", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<FibonacciResponse> fibonacci(@Valid @RequestBody FibonacciRequest request) {
         try {
-            // Simulate variable latency (mirrors the Rust demo's 250-750 ms sleep)
+            // simulate business logic (db calls, complex processing logic, etc.)
             long delay = ThreadLocalRandom.current().nextLong(250, 750);
             Thread.sleep(delay);
 
             long result = fibonacciService.compute(request.number());
+            log.info("fibonacci({}) = {}", request.number(), result);
 
-            log.info("fibonacci({}) = {} ({}ms)", request.number(), result, delay);
             return ResponseEntity.ok(new FibonacciResponse(request.number(), result));
 
         } catch (InterruptedException e) {
@@ -108,8 +85,9 @@ public class DemoController {
         log.info("calling external httpbin API");
 
         try {
-            // RestClient is auto-instrumented: the agent creates a client span and
-            // injects `traceparent` + `tracestate` headers automatically.
+            // RestClient is auto-instrumented by the Java Agent. It creates a client span
+            // and injects `traceparent` + `tracestate` from the current span context
+            // into the headers automatically
             String body = restClient.get()
                     .uri(HTTPBIN_PATH)
                     .retrieve()
@@ -119,8 +97,8 @@ public class DemoController {
 
             JsonNode httpbinResponse = objectMapper.readTree(body);
             JsonNode response = objectMapper.createObjectNode()
-                    .put("note", "This endpoint calls https://httpbin.org/anything with propagated trace context. "
-                            + "Check the echoed Traceparent header in httpbin_response.headers.")
+                    .put("note", "This endpoint calls httpbin. with propagated trace context. "
+                            + "Match the echoed Traceparent header in httpbin_response.headers with the trace and span IDs in your OTel Backend.")
                     .set("httpbin_response", httpbinResponse);
 
             return ResponseEntity.ok(response);

@@ -77,7 +77,7 @@ This continuously generates traffic against `/`, `//`, and `/fibonacci` to produ
 ### Metrics
 - `http.server.request.duration` — auto (agent)
 - `http.server.active_requests` — auto (agent) when `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true`
-- `app.fibonacci.duration` — manual histogram recorded for `POST /fibonacci` by `FibonacciMetricsFilter`
+- `app.fibonacci.input` — manual histogram of requested Fibonacci numbers, recorded in `FibonacciService`
 
 ### Logs
 Every SLF4J log line is automatically correlated with the active trace and span IDs by the agent. The console pattern also prints `trace_id` and `span_id` so correlation is visible locally.
@@ -94,7 +94,7 @@ Every SLF4J log line is automatically correlated with the active trace and span 
 | `fibonacci.result` output attribute | Manual — `Span.current().setAttribute(...)` |
 | `error.type` attribute on bad input | Manual — `Span.current().setAttribute(...)` |
 | `http.server.active_requests` | Auto — emitted by the Java agent when `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true` |
-| `app.fibonacci.duration` histogram | Manual — recorded by `FibonacciMetricsFilter` through `MetricsService` for `POST /fibonacci` |
+| `app.fibonacci.input` histogram | Manual — recorded through `MetricsService` from `FibonacciService.compute(...)` |
 
 ## Validation
 
@@ -125,6 +125,6 @@ curl http://localhost:8085/external
 - Resource attributes set: `service.name`, `service.version=0.1.0`, `deployment.environment=dev`
 - Context propagation: W3C TraceContext (enabled by default in the agent)
 - The `run` target enables `OTEL_INSTRUMENTATION_HTTP_CLIENT_EMIT_EXPERIMENTAL_TELEMETRY=true` and `OTEL_INSTRUMENTATION_HTTP_SERVER_EMIT_EXPERIMENTAL_TELEMETRY=true`
-- `app.fibonacci.duration` is a custom business metric recorded for `POST /fibonacci` with `http.request.method`, `http.response.status_code`, and `url.path` attributes
+- `app.fibonacci.input` is a custom business metric that buckets requested Fibonacci numbers at `1, 2, 3, 5, 8, 13, 21, 34, 55, 89`
 - The agent JAR is gitignored; it lives in `agent/` and is downloaded by `make download-agent`
 - All OTel config is done via environment variables — nothing is hardcoded in the app
