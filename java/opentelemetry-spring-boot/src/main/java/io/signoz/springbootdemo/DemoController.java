@@ -43,7 +43,7 @@ public class DemoController {
         return ResponseEntity.ok("Hello, World!");
     }
 
-    // define the input constraints for the fibonacci request
+    // validate input number within the request body
     record FibonacciRequest(
             @NotNull(message = "missing required field: number") @Min(value = 0, message = "number must be between 0 and 92") @Max(value = 92, message = "number must be between 0 and 92") Integer number) {
     }
