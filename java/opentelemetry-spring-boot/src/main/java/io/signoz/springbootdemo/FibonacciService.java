@@ -29,8 +29,8 @@ public class FibonacciService {
                     "number must be between 0 and 92, got: " + n);
         }
 
-        metricsService.recordFibonacciInput(n);
         long result = fib(n);
+        metricsService.recordFibonacciCalculation(result);
         // manually set a span attribute for the result
         Span.current().setAttribute("fibonacci.result", result);
         log.debug("fibonacci({}) = {}", n, result);

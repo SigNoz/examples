@@ -1,31 +1,49 @@
 package io.signoz.springbootdemo;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.metrics.DoubleHistogram;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MetricsService {
-        private DoubleHistogram fibonacciInput;
+        private static final AttributeKey<String> FIBONACCI_RESULT_BAND = AttributeKey
+                        .stringKey("fibonacci.result.band");
+
+        private LongCounter fibonacciCalculations;
 
         @PostConstruct
         public void init() {
                 Meter meter = GlobalOpenTelemetry.getMeter("opentelemetry-spring-boot-demo");
 
-                // define a fibonacci input metric to capture business insights
-                fibonacciInput = meter
-                                .histogramBuilder("app.fibonacci.input")
-                                .setDescription("Distribution of requested Fibonacci input numbers")
-                                .setUnit("{number}")
-                                // Bucket input numbers into discrete, high-dimension buckets
-                                .setExplicitBucketBoundariesAdvice(java.util.List.of(
-                                                1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0, 34.0, 55.0, 89.0))
+                fibonacciCalculations = meter
+                                .counterBuilder("app.fibonacci.calculations")
+                                .setDescription("Count of successful Fibonacci calculations by result band")
+                                .setUnit("1")
                                 .build();
         }
 
-        public void recordFibonacciInput(int number) {
-                fibonacciInput.record(number);
+        public void recordFibonacciCalculation(long result) {
+                fibonacciCalculations.add(1, Attributes.of(
+                                FIBONACCI_RESULT_BAND, toResultBand(result)));
+        }
+
+        private String toResultBand(long result) {
+                if (result < 10) {
+                        return "single_digit";
+                }
+                if (result < 100) {
+                        return "double_digit";
+                }
+                if (result < 1_000_000) {
+                        return "medium";
+                }
+                if (result < 1_000_000_000_000L) {
+                        return "large";
+                }
+                return "huge";
         }
 }
