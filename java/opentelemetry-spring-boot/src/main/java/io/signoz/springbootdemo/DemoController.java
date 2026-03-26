@@ -70,16 +70,6 @@ public class DemoController {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // GET /external
-    //
-    // Makes an outbound HTTP GET to httpbin.org/anything.
-    // The agent auto-instruments RestClient and injects the W3C traceparent header,
-    // so the downstream service receives the correct trace context.
-    // We return the httpbin response body so callers can verify the propagated
-    // header.
-    // -------------------------------------------------------------------------
-
     @GetMapping("/external")
     public ResponseEntity<JsonNode> external() {
         log.info("calling external httpbin API");
