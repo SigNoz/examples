@@ -19,6 +19,7 @@ Demonstrates OpenTelemetry instrumentation for a Spring Boot 3.5 application usi
 - Java 21+
 - Maven 3.9+
 - A SigNoz Cloud account (or any OTLP-compatible backend)
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/#installation-methods) (for distributed tracing demo)
 
 ## Get your SigNoz values
 
@@ -47,6 +48,32 @@ make run
 ```
 
 The server starts on `http://localhost:8085`.
+
+## Simulate a second service with Python (uv)
+
+> First, ensure you have [`uv` installed](https://docs.astral.sh/uv/getting-started/installation/#installation-methods).
+
+To emulate a distributed trace across services, run the included Python client at `scripts/python_client.py`. It calls the `/external` endpoint of this Spring Boot app, which in turn calls an external API.
+
+Run it with `uv` and OpenTelemetry auto-instrumentation:
+
+```bash
+OTEL_SERVICE_NAME="py-springboot-client" \
+OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.<region>.signoz.cloud:443" \
+OTEL_EXPORTER_OTLP_HEADERS="signoz-ingestion-key=<your-signoz-key>" \
+uv run \
+  --with opentelemetry-distro \
+  --with opentelemetry-exporter-otlp \
+  --with opentelemetry-instrumentation-requests \
+  opentelemetry-instrument python scripts/python_client.py
+```
+
+The script will prompt you for the number of times you wish to call the `/external` endpoint. Enter a positive number like 5.
+
+This produces a distributed trace chain:
+1. **Python client span** (`GET /external`)
+2. **Spring Boot server span** (`GET /external`)
+3. **Spring Boot outbound span** (`GET https://httpbin.org/anything`)
 
 ### Generate load
 
