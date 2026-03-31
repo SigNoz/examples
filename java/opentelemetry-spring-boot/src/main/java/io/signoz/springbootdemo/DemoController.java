@@ -76,8 +76,8 @@ public class DemoController {
 
         try {
             // RestClient is auto-instrumented by the Java Agent. It creates a client span
-            // and injects `traceparent` + `tracestate` from the current span context
-            // into the headers automatically
+            // and injects `traceparent` from the current span context into the headers
+            // automatically
             String body = restClient.get()
                     .uri(HTTPBIN_PATH)
                     .retrieve()
@@ -87,8 +87,7 @@ public class DemoController {
 
             JsonNode httpbinResponse = objectMapper.readTree(body);
             JsonNode response = objectMapper.createObjectNode()
-                    .put("note", "This endpoint calls httpbin. with propagated trace context. "
-                            + "Match the echoed Traceparent header in httpbin_response.headers with the trace and span IDs in your OTel Backend.")
+                    .put("note", "This endpoint calls httpbin with propagated trace context.")
                     .set("httpbin_response", httpbinResponse);
 
             return ResponseEntity.ok(response);
