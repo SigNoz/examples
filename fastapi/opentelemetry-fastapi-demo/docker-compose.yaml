@@ -1,6 +1,15 @@
-fastapi-service:
+services:
+  fastapi-service:
     build:
       context: .
     image: sample-fastapi-app
     ports:
       - "5002:5002"
+    environment:
+      OTEL_SERVICE_NAME: sample-fastapi-app
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=docker}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-console,otlp}
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
