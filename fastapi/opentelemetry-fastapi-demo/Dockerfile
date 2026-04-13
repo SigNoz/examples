@@ -8,4 +8,6 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
+RUN opentelemetry-bootstrap --action=install
+
 CMD ["opentelemetry-instrument", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5002"]
