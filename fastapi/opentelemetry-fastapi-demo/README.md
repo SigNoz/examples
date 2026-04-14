@@ -49,7 +49,6 @@ opentelemetry-bootstrap --action=install
 
 ```bash
 OTEL_TRACES_EXPORTER=console,otlp \
-OTEL_METRICS_EXPORTER=none \
 OTEL_SERVICE_NAME=sample-fastapi-app \
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local \
 OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.<region>.signoz.cloud:443 \
