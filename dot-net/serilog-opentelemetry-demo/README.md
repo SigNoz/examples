@@ -48,7 +48,7 @@ A production-ready ASP.NET Core Web API demonstrating **Serilog** structured log
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/SigNoz/signoz-examples.git
+git clone git@github.com:SigNoz/examples.git
 cd signoz-examples/dotnet/serilog-opentelemetry-demo
 ```
 
