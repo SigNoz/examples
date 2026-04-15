@@ -12,7 +12,7 @@ Sample FastAPI app instrumented with OpenTelemetry and exporting telemetry to Si
 
 ## Stack
 
-- Runtime: Python 3.13 in Docker, Python 3.12+ locally
+- Runtime: Python 3.12+
 - Framework: FastAPI `0.128.8`
 - ASGI server: Uvicorn `0.42.0`
 - HTTP client: HTTPX `0.28.1`
