@@ -30,7 +30,7 @@
             The agent relocates its own internal SDK copy, so there is no classpath conflict.
             Pin these to match the SDK bundled inside the agent (1.47.0).
         -->
-        <opentelemetry.version>1.47.0</opentelemetry.version>
+        <opentelemetry.version>1.62.0</opentelemetry.version>
         <opentelemetry.instrumentation.version>2.26.0</opentelemetry.instrumentation.version>
     </properties>
 
