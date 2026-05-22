@@ -1,0 +1,7 @@
+claude-agent-sdk==0.2.85
+fastapi[standard]==0.136.1
+openai-agents==0.17.3
+opentelemetry-distro==0.63b1
+opentelemetry-exporter-otlp==1.42.1
+opentelemetry-instrumentation==0.63b1
+opentelemetry-sdk==1.42.1
