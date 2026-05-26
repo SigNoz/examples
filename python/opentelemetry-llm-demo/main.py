@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fastapi import HTTPException
@@ -5,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from config import NBA_TOPIC_MAPPING
-from openai_service import run_openai_prompt
+from openai_service import run_openai_prompt, run_openai_responses_prompt
 from prompts import build_nba_analysis_prompt
 
 load_dotenv()
@@ -30,3 +31,12 @@ def news(topic: str):
 @app.get("/")
 def index():
     return {"message": "OpenAI NBA News Reporter API is running"}
+
+
+def main() -> None:
+    prompt = build_nba_analysis_prompt("Finals")
+    result = run_openai_responses_prompt(prompt)
+    print(json.dumps(result, indent=2))
+
+
+main()
