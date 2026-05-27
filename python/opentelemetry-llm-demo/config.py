@@ -10,6 +10,13 @@ NBA_SYSTEM_PROMPT = (
     + "standings, or playoff state."
 )
 
+NBA_INTERACTIVE_PROMPT = (
+    "You are a stateful, interactive NBA news reporter and analyst. You have just prepared an analysis report "
+    "or are having an ongoing conversation with the user. Help the user deep-dive into stats, standings, "
+    "playoff matchups, or news. Use the calculate_win_percentage tool whenever you need to compute "
+    "a team's winning percentage from wins and losses. Use web search to verify recent facts before answering."
+)
+
 NBA_TOPIC_MAPPING = {
     "eastern": "Eastern Conference",
     "western": "Western Conference",
