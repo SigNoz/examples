@@ -1,0 +1,38 @@
+services:
+  inventory-service:
+    image: maven:3.9-eclipse-temurin-21
+    working_dir: /app/inventory-service
+    volumes:
+      - .:/app
+      - ./agent:/agent
+      # Mount maven repo to avoid downloading dependencies on every start
+      - ~/.m2:/root/.m2
+    command: mvn spring-boot:run -Dspring-boot.run.jvmArguments="-javaagent:/agent/opentelemetry-javaagent-2.26.0.jar"
+    ports:
+      - "8082:8082"
+    environment:
+      - OTEL_SERVICE_NAME=inventory-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+
+  order-service:
+    image: maven:3.9-eclipse-temurin-21
+    working_dir: /app/order-service
+    volumes:
+      - .:/app
+      - ./agent:/agent
+      - ~/.m2:/root/.m2
+    command: mvn spring-boot:run -Dspring-boot.run.jvmArguments="-javaagent:/agent/opentelemetry-javaagent-2.26.0.jar"
+    ports:
+      - "8081:8081"
+    environment:
+      - OTEL_SERVICE_NAME=order-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+    depends_on:
+      - inventory-service
