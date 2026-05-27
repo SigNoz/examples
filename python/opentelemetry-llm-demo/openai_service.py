@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 from openai import OpenAI
+from agents import Agent, Runner, WebSearchTool
 
 from config import NBA_SYSTEM_PROMPT, OPENAI_MODEL
 
@@ -75,5 +76,40 @@ def run_openai_responses_prompt(prompt: str) -> dict[str, object]:
         "message": message,
         "response_id": response.id,
         "model": response.model,
+        "usage": usage,
+    }
+
+
+def run_openai_agents_prompt(prompt: str) -> dict[str, object]:
+    agent = Agent(
+        name="NBA_Reporter",
+        instructions=NBA_SYSTEM_PROMPT,
+        tools=[WebSearchTool()],
+        model=OPENAI_MODEL,
+    )
+
+    result = Runner.run_sync(agent, prompt)
+
+    message = (result.final_output or "").strip()
+    if not message:
+        raise HTTPException(
+            status_code=502,
+            detail="OpenAI Agents SDK run did not produce any output text",
+        )
+
+    usage = None
+    if getattr(result, "context_wrapper", None) is not None:
+        cw_usage = getattr(result.context_wrapper, "usage", None)
+        if cw_usage is not None:
+            usage = {
+                "input_tokens": getattr(cw_usage, "input_tokens", 0),
+                "output_tokens": getattr(cw_usage, "output_tokens", 0),
+                "total_tokens": getattr(cw_usage, "total_tokens", 0),
+            }
+
+    return {
+        "message": message,
+        "response_id": getattr(result, "id", None) or "agents_run_result",
+        "model": OPENAI_MODEL,
         "usage": usage,
     }
