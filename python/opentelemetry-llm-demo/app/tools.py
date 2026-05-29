@@ -7,6 +7,6 @@ def calculate_win_percentage(wins: int, losses: int) -> str:
 
     total_games = wins + losses
     if total_games == 0:
-        return "0.00"
+        return ".000"
 
-    return f"{wins / total_games:.2f}"
+    return f"{wins / total_games:.3f}".lstrip("0")
