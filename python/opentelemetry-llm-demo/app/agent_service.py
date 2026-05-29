@@ -1,89 +1,14 @@
 from fastapi import HTTPException
 from agents import (
     Agent,
-    GuardrailFunctionOutput,
-    RunContextWrapper,
     Runner,
     WebSearchTool,
-    function_tool,
-    input_guardrail,
 )
 
 from app.config import NBA_INTERACTIVE_PROMPT, NBA_TOPIC_MAPPING, OPENAI_MODEL
+from app.guardrails import nba_content_guardrail
 from app.prompts import build_nba_turn_prompt
-
-
-@function_tool
-def calculate_win_percentage(wins: int, losses: int) -> str:
-    """Calculates the winning percentage for an NBA team given their wins and losses."""
-
-    total_games = wins + losses
-    if total_games == 0:
-        return "0.000"
-
-    return f"{wins / total_games:.3f}"
-
-
-@input_guardrail()
-def nba_content_guardrail(
-    context: RunContextWrapper[None],
-    agent: Agent,
-    input_data: str | list,
-) -> GuardrailFunctionOutput:
-    """Ensures the user query is relevant to basketball/NBA."""
-
-    del context, agent
-
-    keywords = [
-        "nba",
-        "basketball",
-        "player",
-        "team",
-        "finals",
-        "playoff",
-        "standing",
-        "court",
-        "wins",
-        "losses",
-        "score",
-        "game",
-        "championship",
-        "conference",
-        "mvp",
-        "report",
-        "news",
-        "cavs",
-        "knicks",
-        "thunder",
-        "spurs",
-    ]
-
-    if isinstance(input_data, list):
-        # find the last user message in the input data
-        latest_user_message = next(
-            (
-                item.get("content", "")
-                for item in reversed(input_data)
-                if isinstance(item, dict) and item.get("role") == "user"
-            ),
-            "",
-        )
-        input_query = latest_user_message
-    else:
-        input_query = input_data
-
-    input_query = input_query.lower()
-    is_relevant = any(keyword in input_query for keyword in keywords)
-
-    if len(input_query) < 5 or is_relevant:
-        return GuardrailFunctionOutput(tripwire_triggered=False, output_info=None)
-
-    return GuardrailFunctionOutput(
-        tripwire_triggered=True,
-        output_info={
-            "reason": "The request is off-topic. Please ask questions relevant to NBA or basketball."
-        },
-    )
+from app.tools import calculate_win_percentage
 
 
 def validate_topic(topic: str) -> str:
@@ -98,7 +23,6 @@ def validate_topic(topic: str) -> str:
     return nba_topic
 
 
-# TODO: check if above functions should be moved to a dedicated module
 NBA_AGENT = Agent(
     name="NBA_Reporter",
     instructions=NBA_INTERACTIVE_PROMPT,
@@ -108,7 +32,7 @@ NBA_AGENT = Agent(
 )
 
 
-def run_agent_turn(topic: str, user_message: str | None) -> dict[str, object]:
+def run_agent_turn(topic: str, user_message: str | None) -> dict:
     nba_topic = validate_topic(topic)
     prompt = build_nba_turn_prompt(nba_topic, user_message)
     result = Runner.run_sync(NBA_AGENT, prompt)
