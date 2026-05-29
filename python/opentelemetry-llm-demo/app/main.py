@@ -26,8 +26,9 @@ def index() -> dict[str, str]:
 @app.post("/agent/turn", response_model=AgentTurnResponse)
 def agent_turn(req: AgentTurnRequest) -> dict[str, Any]:
     try:
-        return run_agent_turn(req.topic, req.message)
+        return run_agent_turn(req.topic, req.message, req.session_id)
     except InputGuardrailTripwireTriggered as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Guardrail blocked query: {str(exc)}"
-        ) from exc
+        # extract the exact message returned by the guardrail function
+        guardrail_msg = exc.guardrail_result.output.output_info
+
+        raise HTTPException(status_code=400, detail=guardrail_msg)
