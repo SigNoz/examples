@@ -8,6 +8,7 @@ from agents import (
 
 from app.config import NBA_INTERACTIVE_PROMPT, NBA_TOPIC_MAPPING, OPENAI_MODEL
 from app.guardrails import nba_content_guardrail
+from app.output_formatting import sanitize_agent_message
 from app.prompts import build_nba_turn_prompt
 from app.tools import calculate_win_percentage
 
@@ -50,7 +51,7 @@ def run_agent_turn(
     session = OpenAIConversationsSession(conversation_id=session_id)
     result = Runner.run_sync(NBA_AGENT, prompt, session=session)
 
-    message = (result.final_output or "").strip()
+    message = sanitize_agent_message((result.final_output or "").strip())
     if not message:
         raise HTTPException(
             status_code=502,
