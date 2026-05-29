@@ -34,12 +34,6 @@ def _validate_topic(topic: str) -> str:
     return nba_topic
 
 
-def _resolve_session_id(session: OpenAIConversationsSession) -> str:
-    # the conversation session is lazily-created, so the ID gets generated
-    # after the runner has interacted with the session during a turn
-    return session.session_id
-
-
 def run_agent_turn(
     topic: str,
     user_message: str | None,
@@ -48,6 +42,8 @@ def run_agent_turn(
     nba_topic = _validate_topic(topic)
     prompt = build_nba_turn_prompt(nba_topic, user_message)
 
+    # if no session ID was given, the sdk internally creates a session_id during the turn
+    # subsequent calls which pass the ID maintain the conversation context
     session = OpenAIConversationsSession(conversation_id=session_id)
     result = Runner.run_sync(NBA_AGENT, prompt, session=session)
 
@@ -59,7 +55,8 @@ def run_agent_turn(
         )
 
     usage = None
-    # attach usage context to the response
+    # attach usage context to the response for immediate feedback to the client,
+    # as token usage tends to rise as conversations continue
     if getattr(result, "context_wrapper", None) is not None:
         context_usage = getattr(result.context_wrapper, "usage", None)
         if context_usage is not None:
@@ -71,7 +68,7 @@ def run_agent_turn(
 
     return {
         "topic": topic,
-        "session_id": _resolve_session_id(session),
+        "session_id": session.session_id,
         "message": message,
         "model": OPENAI_MODEL,
         "usage": usage,
