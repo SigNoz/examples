@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from agents import (
     Agent,
+    OpenAIConversationsSession,
     Runner,
     WebSearchTool,
 )
@@ -9,18 +10,6 @@ from app.config import NBA_INTERACTIVE_PROMPT, NBA_TOPIC_MAPPING, OPENAI_MODEL
 from app.guardrails import nba_content_guardrail
 from app.prompts import build_nba_turn_prompt
 from app.tools import calculate_win_percentage
-
-
-def validate_topic(topic: str) -> str:
-    nba_topic = NBA_TOPIC_MAPPING.get(topic)
-    if nba_topic is None:
-        supported_topics = ", ".join(sorted(NBA_TOPIC_MAPPING))
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid NBA topic '{topic}'. Supported topics: {supported_topics}",
-        )
-
-    return nba_topic
 
 
 NBA_AGENT = Agent(
@@ -32,10 +21,34 @@ NBA_AGENT = Agent(
 )
 
 
-def run_agent_turn(topic: str, user_message: str | None) -> dict:
-    nba_topic = validate_topic(topic)
+def _validate_topic(topic: str) -> str:
+    nba_topic = NBA_TOPIC_MAPPING.get(topic)
+    if nba_topic is None:
+        supported_topics = ", ".join(sorted(NBA_TOPIC_MAPPING))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid NBA topic '{topic}'. Supported topics: {supported_topics}",
+        )
+
+    return nba_topic
+
+
+def _resolve_session_id(session: OpenAIConversationsSession) -> str:
+    # the conversation session is lazily-created, so the ID gets generated
+    # after the runner has interacted with the session during a turn
+    return session.session_id
+
+
+def run_agent_turn(
+    topic: str,
+    user_message: str | None,
+    session_id: str | None,
+) -> dict:
+    nba_topic = _validate_topic(topic)
     prompt = build_nba_turn_prompt(nba_topic, user_message)
-    result = Runner.run_sync(NBA_AGENT, prompt)
+
+    session = OpenAIConversationsSession(conversation_id=session_id)
+    result = Runner.run_sync(NBA_AGENT, prompt, session=session)
 
     message = (result.final_output or "").strip()
     if not message:
@@ -57,7 +70,7 @@ def run_agent_turn(topic: str, user_message: str | None) -> dict:
 
     return {
         "topic": topic,
-        "session_id": None,
+        "session_id": _resolve_session_id(session),
         "message": message,
         "model": OPENAI_MODEL,
         "usage": usage,

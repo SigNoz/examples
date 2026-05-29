@@ -11,7 +11,7 @@ class AgentTurnRequest(BaseModel):
     )
     session_id: str | None = Field(
         default=None,
-        description="Reserved for follow-up turns. Session-backed chat arrives in the next batch.",
+        description="existing OpenAI conversation ID to continue an NBA chat. omit it to start a new one.",
     )
 
 
