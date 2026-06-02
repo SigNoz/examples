@@ -49,7 +49,7 @@ OTEL_EXPORTER_OTLP_HEADERS="signoz-ingestion-key=<your-ingestion-key>" \
 OTEL_SERVICE_NAME="opentelemetry-llm-demo" \
 OTEL_RESOURCE_ATTRIBUTES="service.version=0.1.0,deployment.environment=dev" \
 OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \
-opentelemetry-instrument fastapi run
+opentelemetry-instrument fastapi run --port 8085
 ```
 
 If you explicitly want to disable prompt/response content on spans, use:
@@ -69,7 +69,7 @@ If content capture is enabled, be aware that `gen_ai.input.messages` can include
 Simple health check:
 
 ```bash
-curl "http://127.0.0.1:8000/"
+curl "http://127.0.0.1:8085/"
 ```
 
 ### `POST /agent/turn`
@@ -85,7 +85,7 @@ Supported `topic` values:
 Example first turn:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/agent/turn" \
+curl -X POST "http://127.0.0.1:8085/agent/turn" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "eastern",
@@ -96,7 +96,7 @@ curl -X POST "http://127.0.0.1:8000/agent/turn" \
 Example follow-up turn with conversation continuity:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/agent/turn" \
+curl -X POST "http://127.0.0.1:8085/agent/turn" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "eastern",
@@ -108,11 +108,11 @@ curl -X POST "http://127.0.0.1:8000/agent/turn" \
 Example tool-oriented turn:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/agent/turn" \
+curl -X POST "http://127.0.0.1:8085/agent/turn" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "general",
-    "message": "The Raptors went 46-36 this NAB season. What was their win percentage?"
+    "message": "The Raptors went 46-36 this NBA season. What was their win percentage?"
   }'
 ```
 
