@@ -2,15 +2,12 @@ import logging
 from typing import Any
 
 from agents import InputGuardrailTripwireTriggered
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
 
 from app.agent_service import run_agent_turn
 from app.models import AgentTurnRequest, AgentTurnResponse
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

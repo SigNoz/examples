@@ -5,4 +5,3 @@ opentelemetry-exporter-otlp==1.42.1
 opentelemetry-instrumentation==0.63b1
 opentelemetry-instrumentation-openai-agents-v2==0.1.0
 opentelemetry-sdk==1.42.1
-python-dotenv==1.2.2
