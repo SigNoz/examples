@@ -3,6 +3,7 @@ opentelemetry-collector/otelcol-contrib-demo/builder/ocb
 
 # Python virtual environment
 .venv/
+__pycache__/
 
 # env files
 .env
