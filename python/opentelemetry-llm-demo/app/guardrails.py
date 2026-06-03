@@ -9,8 +9,6 @@ def nba_content_guardrail(
 ) -> GuardrailFunctionOutput:
     """Ensures the user query is relevant to basketball/NBA."""
 
-    del context, agent
-
     keywords = [
         "nba",
         "basketball",
