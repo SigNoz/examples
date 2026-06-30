@@ -22,7 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 
 # opentelemetry dependencies
 opentelemetry = "0.31"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = [
     "grpc-tonic",
     # to send data to secure endpoints over gRPC
