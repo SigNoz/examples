@@ -1,0 +1,19 @@
+{
+  "name": "jaeger-tracing-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "frontend": "node --import ./instrumentation.mjs ./frontend.mjs",
+    "inventory": "node --import ./instrumentation.mjs ./inventory.mjs",
+    "traffic": "node ./generate-traffic.mjs",
+    "verify": "node ./verify-traces.mjs"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "0.79.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.221.0",
+    "@opentelemetry/sdk-node": "0.221.0",
+    "express": "5.2.1"
+  }
+}

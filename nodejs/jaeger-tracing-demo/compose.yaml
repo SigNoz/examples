@@ -1,0 +1,31 @@
+services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+
+  inventory:
+    build: .
+    command: ["npm", "run", "inventory"]
+    environment:
+      OTEL_SERVICE_NAME: inventory-service
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=local
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      - jaeger
+
+  frontend:
+    build: .
+    command: ["npm", "run", "frontend"]
+    environment:
+      INVENTORY_URL: http://inventory:3001
+      OTEL_SERVICE_NAME: frontend-service
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=local
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - jaeger
+      - inventory
