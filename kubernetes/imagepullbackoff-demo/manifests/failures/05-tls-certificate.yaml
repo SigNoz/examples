@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tls-certificate
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: tls-certificate
+spec:
+  restartPolicy: Never
+  containers:
+    - name: app
+      image: self-signed.badssl.com/demo/app:latest
+      imagePullPolicy: Always

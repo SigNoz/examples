@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-dns
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: registry-dns
+spec:
+  restartPolicy: Never
+  containers:
+    - name: app
+      image: registry.invalid/signoz/demo:latest
+      imagePullPolicy: Always

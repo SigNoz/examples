@@ -1,0 +1,16 @@
+services:
+  authenticated-registry:
+    image: registry:2.8.3
+    ports:
+      - "5050:5000"
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: ImagePullBackOff Lab
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    volumes:
+      - ./registry-fixtures/htpasswd:/auth/htpasswd:ro
+
+  mock-registry:
+    build: ./registry-fixtures/mock-registry
+    ports:
+      - "5001:5001"

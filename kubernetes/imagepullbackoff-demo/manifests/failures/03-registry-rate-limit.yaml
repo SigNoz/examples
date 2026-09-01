@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-rate-limit
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: registry-rate-limit
+spec:
+  restartPolicy: Never
+  containers:
+    - name: app
+      image: host.minikube.internal:5001/rate-limited/app:latest
+      imagePullPolicy: Always
