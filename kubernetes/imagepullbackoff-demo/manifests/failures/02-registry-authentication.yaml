@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-authentication
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: registry-authentication
+spec:
+  restartPolicy: Never
+  imagePullSecrets:
+    - name: registry-credentials
+  containers:
+    - name: web
+      image: host.minikube.internal:5050/private/nginx:1.27-alpine
+      imagePullPolicy: Always

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: missing-tag
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: missing-tag
+spec:
+  restartPolicy: Never
+  containers:
+    - name: web
+      image: nginx:1.999-does-not-exist
+      imagePullPolicy: Always

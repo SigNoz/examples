@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: runtime-unpack-failure
+  namespace: imagepullbackoff-lab
+  labels:
+    app: imagepullbackoff-demo
+    failure: runtime-unpack-failure
+spec:
+  restartPolicy: Never
+  containers:
+    - name: app
+      image: host.minikube.internal:5001/runtime-failure/app:latest
+      imagePullPolicy: Always
