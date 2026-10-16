@@ -1,17 +1,16 @@
-from fastapi import HTTPException
 from agents import (
     Agent,
     OpenAIConversationsSession,
     Runner,
     WebSearchTool,
 )
+from fastapi import HTTPException
 
 from app.config import NBA_INTERACTIVE_PROMPT, NBA_TOPIC_MAPPING, OPENAI_MODEL
 from app.guardrails import nba_content_guardrail
 from app.output_formatting import sanitize_agent_message
 from app.prompts import build_nba_turn_prompt
 from app.tools import calculate_win_percentage
-
 
 NBA_AGENT = Agent(
     name="NBA_Reporter",

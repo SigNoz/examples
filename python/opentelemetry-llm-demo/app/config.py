@@ -1,4 +1,4 @@
-OPENAI_MODEL = "gpt-5.4-mini-2026-03-17"
+OPENAI_MODEL = "gpt-6-luna"
 
 NBA_TOPIC_MAPPING = {
     "eastern": "Eastern Conference",
