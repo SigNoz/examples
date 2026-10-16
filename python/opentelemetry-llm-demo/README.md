@@ -30,11 +30,29 @@ That is enough to produce telemetry that feel meaningfully LLM- and agent-orient
 1. Sign up for a free account: [Sign up for a free account](https://signoz.io/teams/) if you haven't already.
 2. Get your key: Get your key from `Settings -> Ingestion`.
 
+## setup the demo
+
+Prepare virtual environment. We've used Python 3.12 here, we recommend you use the same version for maximum compatibility:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
 Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Install OpenTelemetry instrumentation libraries:
+
+```bash
+opentelemetry-bootstrap --action=install
+```
+
+Note that this command also installs a now-deprecated `opentelemetry-instrumentation-openai-v2` instrumentation library, superseded by the newer `opentelemetry-instrumentation-genai-openai`.
+You can either uninstall the library or ignore it, as in our testing, OpenTelemetry continued to use the newer library as we'd intended.
 
 ## run the demo
 
@@ -49,18 +67,11 @@ OTEL_EXPORTER_OTLP_HEADERS="signoz-ingestion-key=<your-ingestion-key>" \
 OTEL_SERVICE_NAME="otel-ai-agent-observability-demo" \
 OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0,deployment.environment=dev" \
 OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf" \
+OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=span_only \
 opentelemetry-instrument fastapi run --port 8085 --workers 1
 ```
 
-If you explicitly want to disable prompt/response content on spans, use:
-
-```bash
-OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=0
-```
-
-## content capture note
-
-If content capture is enabled, be aware that `gen_ai.input.messages` can include not just the latest user message but the effective model input for that turn. Because this app uses session-backed conversations, that may include earlier turns from the same conversation as well.
+The `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=span_only` value ensures that the OpenAI Instrumentation captures message content, such as the input and output messages, tool definitions, and finish reasons as span attributes.
 
 ## API
 
