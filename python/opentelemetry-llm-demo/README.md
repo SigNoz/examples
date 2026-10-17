@@ -32,7 +32,7 @@ That is enough to produce telemetry that feel meaningfully LLM- and agent-orient
 
 ## setup the demo
 
-Prepare virtual environment. We've used Python 3.12 here, we recommend you use the same version for maximum compatibility:
+Prepare virtual environment. We've used Python 3.12 here, we recommend you use the same or a newer version for maximum compatibility:
 
 ```bash
 python3.12 -m venv .venv
