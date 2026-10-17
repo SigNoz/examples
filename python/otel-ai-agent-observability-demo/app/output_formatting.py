@@ -1,6 +1,5 @@
 import re
 
-
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 BARE_URL_RE = re.compile(r"https?://\S+")
 SOURCE_PAREN_RE = re.compile(r"\s*\((?:[A-Za-z0-9.-]+\.[A-Za-z]{2,}|source:[^)]+)\)\s*")

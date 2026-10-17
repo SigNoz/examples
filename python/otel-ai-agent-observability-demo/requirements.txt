@@ -1,0 +1,9 @@
+fastapi[standard]==0.136.1
+openai==2.38.0
+openai-agents==0.17.3
+opentelemetry-distro==0.66b1
+opentelemetry-exporter-otlp==1.45.1
+# automates trace-log correlation and log record export to otel backend
+# we must explicitly install the genai instrumentation libraries
+opentelemetry-instrumentation-genai-openai==1.2b0
+opentelemetry-instrumentation-genai-openai-agents==1.2b0
