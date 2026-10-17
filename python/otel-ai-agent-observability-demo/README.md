@@ -59,7 +59,7 @@ You can either uninstall the library or ignore it, as in our testing, OpenTeleme
 Run the application via:
 
 ```bash
-cd python/opentelemetry-llm-demo
+cd python/otel-ai-agent-observability-demo
 
 OPENAI_API_KEY="<your-openai-api-key>" \
 OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.<your-region>.signoz.cloud:443" \
