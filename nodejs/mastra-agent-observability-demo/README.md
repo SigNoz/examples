@@ -37,11 +37,3 @@ The agent should answer that three servings need 225 grams of dry rice. The proc
 ## Instrumentation
 
 The demo registers an `Observability` instance from `@mastra/observability` with Mastra. Mastra instruments the agent, model, and tool automatically. The exporter sends traces with `service.name` and `deployment.environment.name`. The sample uses a fixed, non-sensitive prompt.
-
-## Screenshots
-
-Captured with self-hosted SigNoz v0.152.0 and a deterministic OpenAI-compatible model fixture.
-
-![SigNoz trace waterfall showing the agent, model, and rice tool spans](screenshots/trace.png)
-
-![SigNoz AI Observability with populated token, call count, latency, and error-rate panels](screenshots/ai-observability.png)
