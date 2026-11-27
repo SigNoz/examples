@@ -6,5 +6,6 @@ Node.js + OpenTelemetry samples. Suggested subfolders: `express-basic`, `express
 | --- | --- | --- |
 | [`jaeger-tracing-demo`](./jaeger-tracing-demo/) | Two-service distributed tracing with OpenTelemetry, OTLP/HTTP, manual spans, errors, and Jaeger | runnable |
 | [`otel-nestjs-demo`](./otel-nestjs-demo/) | OpenTelemetry tracing patterns for NestJS | runnable |
+| [`mastra-agent-observability-demo`](./mastra-agent-observability-demo/) | Mastra agent, model, and tool traces in SigNoz over OTLP/HTTP | runnable |
 
 Use `templates/SAMPLE_README.md` to document each app.
