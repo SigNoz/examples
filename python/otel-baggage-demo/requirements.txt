@@ -7,7 +7,7 @@ Flask==3.1.2
 googleapis-common-protos==1.72.0
 grpcio==1.76.0
 honcho==2.0.0
-idna==3.11
+idna==3.15
 importlib_metadata==8.4.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
